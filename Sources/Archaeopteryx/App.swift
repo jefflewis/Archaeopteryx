@@ -1,5 +1,6 @@
 import Hummingbird
 import Logging
+import ArchaeopteryxCore
 
 @main
 struct ArchaeopteryxApp {
@@ -21,29 +22,19 @@ struct ArchaeopteryxApp {
         let router = Router()
 
         // Add routes
-        router.get("/") { request, context in
-            return Response(
-                status: .ok,
-                headers: [.contentType: "application/json"],
-                body: .init(data: #"{"name":"Archaeopteryx","version":"0.1.0","description":"Bluesky to Mastodon API bridge"}"#.data(using: .utf8)!)
-            )
+        router.get("/") { request, context -> String in
+            return #"{"name":"Archaeopteryx","version":"0.1.0","description":"Bluesky to Mastodon API bridge"}"#
         }
 
         // Health check endpoint
-        router.get("/health") { request, context in
-            return Response(
-                status: .ok,
-                headers: [.contentType: "application/json"],
-                body: .init(data: #"{"status":"healthy"}"#.data(using: .utf8)!)
-            )
+        router.get("/health") { request, context -> String in
+            return #"{"status":"healthy"}"#
         }
 
         // Create application
         let app = Application(
             router: router,
-            configuration: .init(
-                address: .hostname(config.server.hostname, port: config.server.port)
-            ),
+            configuration: ApplicationConfiguration(address: .hostname(config.server.hostname, port: config.server.port)),
             logger: logger
         )
 

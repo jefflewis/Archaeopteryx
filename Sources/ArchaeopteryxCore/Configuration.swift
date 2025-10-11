@@ -1,59 +1,99 @@
-import Configuration
 import Foundation
 
-/// Application configuration using swift-configuration
-struct ArchaeopteryxConfiguration: Codable {
+/// Application configuration using environment variables and config files
+public struct ArchaeopteryxConfiguration: Codable, Sendable {
     /// Server configuration
-    var server: ServerConfiguration = ServerConfiguration()
+    public var server: ServerConfiguration
 
     /// Valkey/Redis configuration
-    var valkey: ValkeyConfiguration = ValkeyConfiguration()
+    public var valkey: ValkeyConfiguration
 
     /// AT Protocol / Bluesky configuration
-    var atproto: ATProtoConfiguration = ATProtoConfiguration()
+    public var atproto: ATProtoConfiguration
 
     /// Logging configuration
-    var logging: LoggingConfiguration = LoggingConfiguration()
+    public var logging: LoggingConfiguration
+
+    public init(
+        server: ServerConfiguration = ServerConfiguration(),
+        valkey: ValkeyConfiguration = ValkeyConfiguration(),
+        atproto: ATProtoConfiguration = ATProtoConfiguration(),
+        logging: LoggingConfiguration = LoggingConfiguration()
+    ) {
+        self.server = server
+        self.valkey = valkey
+        self.atproto = atproto
+        self.logging = logging
+    }
 }
 
-struct ServerConfiguration: Codable {
+public struct ServerConfiguration: Codable, Sendable {
     /// Server hostname
-    var hostname: String = "0.0.0.0"
+    public var hostname: String
 
     /// Server port
-    var port: Int = 8080
+    public var port: Int
+
+    public init(hostname: String = "0.0.0.0", port: Int = 8080) {
+        self.hostname = hostname
+        self.port = port
+    }
 }
 
-struct ValkeyConfiguration: Codable {
+public struct ValkeyConfiguration: Codable, Sendable {
     /// Valkey/Redis host
-    var host: String = "localhost"
+    public var host: String
 
     /// Valkey/Redis port
-    var port: Int = 6379
+    public var port: Int
 
     /// Optional password
-    var password: String?
+    public var password: String?
 
     /// Database number
-    var database: Int = 0
+    public var database: Int
+
+    public init(
+        host: String = "localhost",
+        port: Int = 6379,
+        password: String? = nil,
+        database: Int = 0
+    ) {
+        self.host = host
+        self.port = port
+        self.password = password
+        self.database = database
+    }
 }
 
-struct ATProtoConfiguration: Codable {
+public struct ATProtoConfiguration: Codable, Sendable {
     /// AT Protocol service URL
-    var serviceURL: String = "https://bsky.social"
+    public var serviceURL: String
 
     /// Optional PDS (Personal Data Server) URL for custom instances
-    var pdsURL: String?
+    public var pdsURL: String?
+
+    public init(
+        serviceURL: String = "https://bsky.social",
+        pdsURL: String? = nil
+    ) {
+        self.serviceURL = serviceURL
+        self.pdsURL = pdsURL
+    }
 }
 
-struct LoggingConfiguration: Codable {
+public struct LoggingConfiguration: Codable, Sendable {
     /// Log level: trace, debug, info, notice, warning, error, critical
-    var level: String = "info"
+    public var level: String
+
+    public init(level: String = "info") {
+        self.level = level
+    }
 }
 
 extension ArchaeopteryxConfiguration {
     /// Load configuration from environment variables and config files
-    static func load() throws -> ArchaeopteryxConfiguration {
+    public static func load() throws -> ArchaeopteryxConfiguration {
         var config = ArchaeopteryxConfiguration()
 
         // Load from environment variables
@@ -91,14 +131,11 @@ extension ArchaeopteryxConfiguration {
             config.logging.level = logLevel
         }
 
-        // TODO: Add support for loading from config files (JSON/PLIST)
-        // This can be extended to use swift-configuration's file providers
-
         return config
     }
 
     /// Valkey connection URL
-    var valkeyURL: String {
+    public var valkeyURL: String {
         var url = "redis://"
         if let password = valkey.password {
             url += ":\(password)@"
