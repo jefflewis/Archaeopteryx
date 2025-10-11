@@ -1,0 +1,22 @@
+# Swift
+.DS_Store
+/.build
+/Packages
+xcuserdata/
+DerivedData/
+.swiftpm/configuration/registries.json
+.swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
+.netrc
+
+# Environment
+.env
+.env.local
+
+# IDEs
+.vscode/
+.idea/
+*.xcodeproj
+*.xcworkspace
+
+# Logs
+*.log
