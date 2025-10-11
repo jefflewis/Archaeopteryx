@@ -22,6 +22,8 @@ let package = Package(
         .package(url: "https://github.com/swift-server/swift-valkey.git", from: "1.0.0"),
         // ATProtoKit - AT Protocol / Bluesky SDK
         .package(url: "https://github.com/MasterJ93/ATProtoKit.git", from: "0.1.0"),
+        // Swift Configuration - Apple's configuration management
+        .package(url: "https://github.com/apple/swift-configuration.git", from: "0.1.0"),
     ],
     targets: [
         .executableTarget(
@@ -30,6 +32,7 @@ let package = Package(
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "Valkey", package: "swift-valkey"),
                 .product(name: "ATProtoKit", package: "ATProtoKit"),
+                .product(name: "Configuration", package: "swift-configuration"),
             ]
         ),
         .testTarget(

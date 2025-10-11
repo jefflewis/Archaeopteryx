@@ -4,9 +4,18 @@ import Logging
 @main
 struct ArchaeopteryxApp {
     static func main() async throws {
+        // Load configuration
+        let config = try ArchaeopteryxConfiguration.load()
+
         // Configure logger
         var logger = Logger(label: "archaeopteryx")
-        logger.logLevel = .info
+        logger.logLevel = parseLogLevel(config.logging.level)
+
+        logger.info("Configuration loaded", metadata: [
+            "server": "\(config.server.hostname):\(config.server.port)",
+            "valkey": "\(config.valkey.host):\(config.valkey.port)",
+            "atproto": "\(config.atproto.serviceURL)"
+        ])
 
         // Create router
         let router = Router()
@@ -33,14 +42,28 @@ struct ArchaeopteryxApp {
         let app = Application(
             router: router,
             configuration: .init(
-                address: .hostname("0.0.0.0", port: 8080)
+                address: .hostname(config.server.hostname, port: config.server.port)
             ),
             logger: logger
         )
 
-        logger.info("Starting Archaeopteryx on http://0.0.0.0:8080")
+        logger.info("Starting Archaeopteryx on http://\(config.server.hostname):\(config.server.port)")
 
         // Run application
         try await app.runService()
+    }
+
+    /// Parse log level string to Logger.Level
+    static func parseLogLevel(_ level: String) -> Logger.Level {
+        switch level.lowercased() {
+        case "trace": return .trace
+        case "debug": return .debug
+        case "info": return .info
+        case "notice": return .notice
+        case "warning": return .warning
+        case "error": return .error
+        case "critical": return .critical
+        default: return .info
+        }
     }
 }

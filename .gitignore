@@ -8,9 +8,10 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .netrc
 
-# Environment
-.env
-.env.local
+# Configuration
+config.json
+config.plist
+*.local.json
 
 # IDEs
 .vscode/

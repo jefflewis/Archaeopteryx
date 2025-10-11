@@ -18,6 +18,7 @@ Archaeopteryx (named after the famous transitional prehistoric bird) acts as a t
 - **[Hummingbird](https://github.com/hummingbird-project/hummingbird)** - Modern, lightweight Swift web framework
 - **[swift-valkey](https://github.com/swift-server/swift-valkey)** - Redis-compatible client for caching
 - **[ATProtoKit](https://github.com/MasterJ93/ATProtoKit)** - Swift SDK for AT Protocol / Bluesky
+- **[swift-configuration](https://github.com/apple/swift-configuration)** - Apple's native configuration management
 
 ## Requirements
 
@@ -48,11 +49,38 @@ swift run Archaeopteryx
 
 ## Configuration
 
-Configuration is handled through environment variables:
+Configuration is handled using Apple's **swift-configuration** library with support for environment variables and configuration files.
 
-- `PORT` - Server port (default: 8080)
-- `VALKEY_URL` - Valkey/Redis connection URL
-- `LOG_LEVEL` - Logging level (debug, info, warning, error)
+### Environment Variables
+
+#### Server Configuration
+- `HOSTNAME` - Server hostname (default: `0.0.0.0`)
+- `PORT` - Server port (default: `8080`)
+
+#### Valkey/Redis Configuration
+- `VALKEY_HOST` - Valkey/Redis host (default: `localhost`)
+- `VALKEY_PORT` - Valkey/Redis port (default: `6379`)
+- `VALKEY_PASSWORD` - Optional password for Valkey/Redis
+- `VALKEY_DATABASE` - Database number (default: `0`)
+
+#### AT Protocol Configuration
+- `ATPROTO_SERVICE_URL` - AT Protocol service URL (default: `https://bsky.social`)
+- `ATPROTO_PDS_URL` - Optional custom PDS URL
+
+#### Logging Configuration
+- `LOG_LEVEL` - Logging level: `trace`, `debug`, `info`, `notice`, `warning`, `error`, `critical` (default: `info`)
+
+### Example Configuration
+
+```bash
+export PORT=8080
+export VALKEY_HOST=localhost
+export VALKEY_PORT=6379
+export LOG_LEVEL=debug
+export ATPROTO_SERVICE_URL=https://bsky.social
+
+swift run Archaeopteryx
+```
 
 ## Usage
 
