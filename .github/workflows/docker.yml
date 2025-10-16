@@ -28,10 +28,18 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Install Swiftly
+        run: |
+          curl -L https://swift-server.github.io/swiftly/swiftly-install.sh | bash -s -- -y
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install Swift 6.2 with Swiftly
+        run: |
+          swiftly install 6.2
+          swiftly use 6.2
+
       - name: Build Linux binary with Swift
-        uses: docker://swift:6.0
-        with:
-          args: swift build -c release
+        run: swift build -c release
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
