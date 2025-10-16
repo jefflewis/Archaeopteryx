@@ -1,6 +1,20 @@
 import Foundation
 import CryptoKit
 
+// MARK: - ID Mapping Protocol
+
+/// Protocol for ID mapping services
+/// Allows for easy testing with mock implementations
+public protocol IDMappingProtocol: Actor {
+    func getSnowflakeID(forDID did: String) async -> Int64
+    func getDID(forSnowflakeID snowflakeID: Int64) async -> String?
+    func getSnowflakeID(forATURI atURI: String) async -> Int64
+    func getATURI(forSnowflakeID snowflakeID: Int64) async -> String?
+    func getSnowflakeID(forHandle handle: String) async -> Int64
+}
+
+// MARK: - ID Mapping Service Implementation
+
 /// Service for mapping between Bluesky identifiers (DIDs, AT URIs, handles) and Mastodon Snowflake IDs
 ///
 /// This service provides deterministic, bidirectional mapping between:
@@ -10,7 +24,7 @@ import CryptoKit
 ///
 /// DID to Snowflake mapping is deterministic - the same DID always maps to the same Snowflake ID
 /// by hashing the DID and using the first 8 bytes as the ID.
-public actor IDMappingService {
+public actor IDMappingService: IDMappingProtocol {
     private let cache: any CacheProtocol
     private let generator: SnowflakeIDGenerator
 

@@ -14,16 +14,26 @@ public struct ArchaeopteryxConfiguration: Codable, Sendable {
     /// Logging configuration
     public var logging: LoggingConfiguration
 
+    /// Observability configuration (OpenTelemetry)
+    public var observability: ObservabilityConfiguration?
+
+    /// Environment name (development, staging, production)
+    public var environment: String?
+
     public init(
         server: ServerConfiguration = ServerConfiguration(),
         valkey: ValkeyConfiguration = ValkeyConfiguration(),
         atproto: ATProtoConfiguration = ATProtoConfiguration(),
-        logging: LoggingConfiguration = LoggingConfiguration()
+        logging: LoggingConfiguration = LoggingConfiguration(),
+        observability: ObservabilityConfiguration? = nil,
+        environment: String? = nil
     ) {
         self.server = server
         self.valkey = valkey
         self.atproto = atproto
         self.logging = logging
+        self.observability = observability
+        self.environment = environment
     }
 }
 
@@ -91,6 +101,27 @@ public struct LoggingConfiguration: Codable, Sendable {
     }
 }
 
+public struct ObservabilityConfiguration: Codable, Sendable {
+    /// OpenTelemetry OTLP collector endpoint
+    public var otlpEndpoint: String
+
+    /// Whether to enable tracing
+    public var tracingEnabled: Bool
+
+    /// Whether to enable metrics
+    public var metricsEnabled: Bool
+
+    public init(
+        otlpEndpoint: String = "http://localhost:4317",
+        tracingEnabled: Bool = true,
+        metricsEnabled: Bool = true
+    ) {
+        self.otlpEndpoint = otlpEndpoint
+        self.tracingEnabled = tracingEnabled
+        self.metricsEnabled = metricsEnabled
+    }
+}
+
 extension ArchaeopteryxConfiguration {
     /// Load configuration from environment variables and config files
     public static func load() throws -> ArchaeopteryxConfiguration {
@@ -129,6 +160,28 @@ extension ArchaeopteryxConfiguration {
 
         if let logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"] {
             config.logging.level = logLevel
+        }
+
+        // Observability configuration
+        if let otlpEndpoint = ProcessInfo.processInfo.environment["OTLP_ENDPOINT"] {
+            var obsConfig = ObservabilityConfiguration(otlpEndpoint: otlpEndpoint)
+
+            if let tracingEnabled = ProcessInfo.processInfo.environment["TRACING_ENABLED"],
+               tracingEnabled.lowercased() == "false" {
+                obsConfig.tracingEnabled = false
+            }
+
+            if let metricsEnabled = ProcessInfo.processInfo.environment["METRICS_ENABLED"],
+               metricsEnabled.lowercased() == "false" {
+                obsConfig.metricsEnabled = false
+            }
+
+            config.observability = obsConfig
+        }
+
+        // Environment configuration
+        if let environment = ProcessInfo.processInfo.environment["ENVIRONMENT"] {
+            config.environment = environment
         }
 
         return config

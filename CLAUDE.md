@@ -243,6 +243,233 @@ Archaeopteryx/
 
 ---
 
+## Dependency Injection with swift-dependencies
+
+Archaeopteryx uses the **swift-dependencies** library for dependency injection. This provides a clean, testable architecture where components can be easily mocked for testing.
+
+### Why Dependency Injection?
+
+- **Testability**: Routes can be tested in isolation without real AT Protocol connections
+- **Flexibility**: Easy to swap implementations (e.g., mock vs. live)
+- **Clarity**: Dependencies are explicit, not hidden
+- **Maintainability**: Changes to dependencies don't ripple through tests
+
+### The @DependencyClient Pattern
+
+We use struct-based protocol witnesses with the `@DependencyClient` macro:
+
+```swift
+import Dependencies
+import DependenciesMacros
+
+@DependencyClient
+public struct ATProtoClientDependency: Sendable {
+    // Define all operations as closures
+    public var getProfile: @Sendable (String) async throws -> ATProtoProfile
+    public var followUser: @Sendable (String) async throws -> String
+    public var searchActors: @Sendable (String, Int, String?) async throws -> ATProtoSearchResponse
+    // ... 28 operations total
+}
+```
+
+**Key Benefits**:
+- The `@DependencyClient` macro automatically generates unimplemented test stubs
+- No need to manually create protocol conformances
+- Sendable by default for Swift 6 concurrency
+- Closures allow flexible implementations
+
+### Providing the Live Implementation
+
+In `App.swift`, we wrap the ATProtoClient actor in a dependency:
+
+```swift
+import Dependencies
+
+// Initialize the ATProtoClient actor
+let atprotoClient = await ATProtoClient(
+    serviceURL: config.atproto.serviceURL,
+    cache: cache
+)
+
+// Wrap it in a dependency and inject for the application
+try await withDependencies {
+    $0.atProtoClient = .live(client: atprotoClient)
+} operation: {
+    // All route handlers inside this block can access the dependency
+    let router = Router()
+    AccountRoutes.addRoutes(to: router, ...)
+    // ... more routes
+
+    let app = Application(router: router, ...)
+    try await app.runService()
+}
+```
+
+### Using Dependencies in Routes
+
+Routes access dependencies via the `@Dependency` property wrapper:
+
+```swift
+import Dependencies
+
+struct AccountRoutes: Sendable {
+    @Dependency(\.atProtoClient) var atprotoClient
+    let oauthService: OAuthService
+    let logger: Logger
+
+    func verifyCredentials(request: Request, context: some RequestContext) async throws -> Response {
+        // Use the dependency - no parameter labels on closures!
+        let profile = try await atprotoClient.getProfile(did)
+        // ...
+    }
+}
+```
+
+**Important**: Dependency closures use positional parameters (no labels):
+```swift
+// ✅ Correct
+let profile = try await atprotoClient.getProfile(did)
+let response = try await atprotoClient.searchActors(query, limit, cursor)
+
+// ❌ Wrong
+let profile = try await atprotoClient.getProfile(actor: did)
+let response = try await atprotoClient.searchActors(query: query, limit: limit)
+```
+
+### Testing with Mock Dependencies
+
+Tests inject mock implementations using `withDependencies`:
+
+```swift
+import Dependencies
+import XCTest
+
+func testVerifyCredentials_Success() async throws {
+    try await withDependencies {
+        // Inject a mock that returns test data
+        $0.atProtoClient = .testSuccess
+    } operation: {
+        // Test code runs with mocked dependency
+        let app = buildTestApp()
+        try await app.test(.router) { client in
+            let response = try await client.execute(
+                uri: "/api/v1/accounts/verify_credentials",
+                method: .get,
+                headers: [.authorization: "Bearer test_token"]
+            )
+
+            XCTAssertEqual(response.status, .ok)
+        }
+    }
+}
+```
+
+### Pre-built Mock Implementations
+
+We provide reusable mocks in `Tests/ArchaeopteryxTests/Mocks/ATProtoClientMocks.swift`:
+
+```swift
+extension ATProtoClientDependency {
+    /// Returns successful responses with test data
+    static var testSuccess: Self { ... }
+
+    /// Returns authentication errors
+    static var testAuthError: Self { ... }
+
+    /// Returns "not found" for profile lookups
+    static var testNotFound: Self { ... }
+}
+```
+
+**Usage**:
+```swift
+// Test successful flow
+try await withDependencies {
+    $0.atProtoClient = .testSuccess
+} operation: {
+    // Your test
+}
+
+// Test error handling
+try await withDependencies {
+    $0.atProtoClient = .testAuthError
+} operation: {
+    // Your test that expects errors
+}
+```
+
+### Custom Mocks for Specific Tests
+
+Create custom behavior for specific test scenarios:
+
+```swift
+func testCustomBehavior() async throws {
+    try await withDependencies {
+        var customMock = ATProtoClientDependency.testSuccess
+
+        // Override specific operations
+        customMock.getProfile = { actor in
+            ATProtoProfile(
+                did: "did:plc:custom",
+                handle: "custom.bsky.social",
+                displayName: "Custom User",
+                // ... custom test data
+            )
+        }
+
+        customMock.followUser = { _ in
+            throw ATProtoError.notImplemented(feature: "follow")
+        }
+
+        $0.atProtoClient = customMock
+    } operation: {
+        // Test with custom behavior
+    }
+}
+```
+
+### Dependency Injection Best Practices
+
+**DO**:
+- ✅ Use `@Dependency` in route structs
+- ✅ Inject dependencies at the app level with `withDependencies`
+- ✅ Use pre-built mocks (`.testSuccess`, `.testAuthError`, etc.)
+- ✅ Test routes in isolation without real network calls
+- ✅ Create custom mocks for edge cases
+
+**DON'T**:
+- ❌ Pass ATProtoClient as a constructor parameter (use `@Dependency` instead)
+- ❌ Use parameter labels on dependency closures
+- ❌ Create real ATProtoClient instances in tests
+- ❌ Share mutable state between tests
+
+### File Organization
+
+```
+Sources/ATProtoAdapter/
+├── ATProtoClient.swift               # Actor with real implementations
+├── ATProtoClientDependency.swift     # @DependencyClient struct
+└── ...
+
+Tests/ArchaeopteryxTests/
+├── Mocks/
+│   └── ATProtoClientMocks.swift      # Reusable mock implementations
+└── Routes/
+    └── AccountRoutesTestsExample.swift # Example tests
+```
+
+### Testing Checklist
+
+When testing a new route:
+1. ✅ Use `withDependencies { }` to inject mocks
+2. ✅ Start with `.testSuccess` for happy path
+3. ✅ Test with `.testAuthError` for auth failures
+4. ✅ Create custom mocks for edge cases
+5. ✅ Verify HTTP status codes and response bodies
+6. ✅ Test without real network calls or database connections
+
+---
+
 ## Coding Practices
 
 ### Test-Driven Development (TDD)
@@ -904,4 +1131,4 @@ CMD [".build/release/Archaeopteryx"]
 
 ---
 
-Last Updated: 2025-10-11
+Last Updated: 2025-10-13

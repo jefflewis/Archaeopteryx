@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 
 import PackageDescription
@@ -25,6 +25,14 @@ let package = Package(
         .package(url: "https://github.com/swift-server/RediStack.git", from: "1.6.0"),
         // ATProtoKit - AT Protocol / Bluesky SDK
         .package(url: "https://github.com/MasterJ93/ATProtoKit.git", from: "0.1.0"),
+        // swift-dependencies - Dependency injection
+        .package(url: "https://github.com/pointfreeco/swift-dependencies.git", from: "1.0.0"),
+        // swift-otel - OpenTelemetry for observability (logs, traces, metrics)
+        .package(url: "https://github.com/swift-otel/swift-otel.git", from: "0.8.0"),
+        // swift-distributed-tracing - Required for OTel
+        .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.2.0"),
+        // swift-metrics - Required for OTel
+        .package(url: "https://github.com/apple/swift-metrics.git", from: "2.4.1"),
     ],
     targets: [
         // ========================================
@@ -70,6 +78,7 @@ let package = Package(
             name: "CacheLayer",
             dependencies: [
                 "ArchaeopteryxCore",
+                "IDMapping",  // For CacheProtocol
                 .product(name: "RediStack", package: "RediStack"),
             ]
         ),
@@ -87,11 +96,16 @@ let package = Package(
                 "ArchaeopteryxCore",
                 "CacheLayer",
                 .product(name: "ATProtoKit", package: "ATProtoKit"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesMacros", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
             name: "ATProtoAdapterTests",
-            dependencies: ["ATProtoAdapter"]
+            dependencies: [
+                "ATProtoAdapter",
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
         ),
 
         // ========================================
@@ -142,11 +156,36 @@ let package = Package(
                 "IDMapping",
                 "OAuthService",
                 .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "OTel", package: "swift-otel"),
+                .product(name: "OTLPGRPC", package: "swift-otel"),
+                .product(name: "Tracing", package: "swift-distributed-tracing"),
+                .product(name: "Metrics", package: "swift-metrics"),
             ]
         ),
         .testTarget(
             name: "ArchaeopteryxTests",
-            dependencies: ["Archaeopteryx"]
+            dependencies: [
+                "Archaeopteryx",
+                .product(name: "HummingbirdTesting", package: "hummingbird"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+            ]
+        ),
+
+        // ========================================
+        // Integration Tests
+        // ========================================
+        .testTarget(
+            name: "IntegrationTests",
+            dependencies: [
+                "Archaeopteryx",
+                "ArchaeopteryxCore",
+                "MastodonModels",
+                "ATProtoAdapter",
+                "CacheLayer",
+                .product(name: "Hummingbird", package: "hummingbird"),
+                .product(name: "HummingbirdTesting", package: "hummingbird"),
+            ]
         ),
     ]
 )
