@@ -1,0 +1,51 @@
+# Build artifacts (except release binary we need)
+.build/debug/
+.build/checkouts/
+.build/*.yaml
+.build/*.json
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+
+# Dependencies
+Packages/
+.Package.resolved
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+._*
+
+# Environment files
+.env
+.env.*
+
+# Logs
+*.log
+
+# Testing
+.coverage
+coverage/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore

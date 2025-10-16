@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  archaeopteryx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: archaeopteryx-app
+    ports:
+      - "8080:8080"
+    environment:
+      # Server configuration
+      PORT: 8080
+      HOSTNAME: 0.0.0.0
+
+      # Cache configuration (points to Valkey service)
+      VALKEY_HOST: valkey
+      VALKEY_PORT: 6379
+      VALKEY_PASSWORD: ""
+      VALKEY_DATABASE: 0
+
+      # AT Protocol configuration
+      ATPROTO_SERVICE_URL: https://bsky.social
+      ATPROTO_PDS_URL: ""
+
+      # Logging
+      LOG_LEVEL: info
+    depends_on:
+      valkey:
+        condition: service_healthy
+    networks:
+      - archaeopteryx-network
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:7.2-alpine
+    container_name: archaeopteryx-valkey
+    ports:
+      - "6379:6379"
+    volumes:
+      - valkey-data:/data
+    command: valkey-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - archaeopteryx-network
+    restart: unless-stopped
+
+networks:
+  archaeopteryx-network:
+    driver: bridge
+
+volumes:
+  valkey-data:
+    driver: local
