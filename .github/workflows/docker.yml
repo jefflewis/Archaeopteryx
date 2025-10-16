@@ -30,16 +30,22 @@ jobs:
 
       - name: Install Swiftly
         run: |
-          curl -L https://swift-server.github.io/swiftly/swiftly-install.sh | bash -s -- -y
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
+          curl -O https://download.swift.org/swiftly/linux/swiftly-$(uname -m).tar.gz
+          tar zxf swiftly-$(uname -m).tar.gz
+          ./swiftly init --quiet-shell-followup
+          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+          hash -r
 
       - name: Install Swift 6.2 with Swiftly
         run: |
+          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
           swiftly install 6.2
           swiftly use 6.2
 
       - name: Build Linux binary with Swift
-        run: swift build -c release
+        run: |
+          . "${SWIFTLY_HOME_DIR:-$HOME/.local/share/swiftly}/env.sh"
+          swift build -c release
 
       - name: Build Docker image
         uses: docker/build-push-action@v5
