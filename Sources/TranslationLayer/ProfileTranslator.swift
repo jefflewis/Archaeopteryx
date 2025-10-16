@@ -2,7 +2,7 @@ import Foundation
 import ATProtoAdapter
 import MastodonModels
 import IDMapping
-import CryptoKit
+import Crypto
 
 /// Translates AT Protocol profiles to Mastodon accounts
 public struct ProfileTranslator: Sendable {

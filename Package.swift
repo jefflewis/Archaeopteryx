@@ -33,6 +33,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.2.0"),
         // swift-metrics - Required for OTel
         .package(url: "https://github.com/apple/swift-metrics.git", from: "2.4.1"),
+        // swift-crypto - Cross-platform cryptography (replaces CryptoKit on Linux)
+        .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
     ],
     targets: [
         // ========================================
@@ -64,7 +66,10 @@ let package = Package(
         // ========================================
         .target(
             name: "IDMapping",
-            dependencies: ["ArchaeopteryxCore"]
+            dependencies: [
+                "ArchaeopteryxCore",
+                .product(name: "Crypto", package: "swift-crypto"),
+            ]
         ),
         .testTarget(
             name: "IDMappingTests",
@@ -118,6 +123,7 @@ let package = Package(
                 "MastodonModels",
                 "ATProtoAdapter",
                 "IDMapping",
+                .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
         .testTarget(
@@ -135,6 +141,7 @@ let package = Package(
                 "MastodonModels",
                 "CacheLayer",
                 "ATProtoAdapter",
+                .product(name: "Crypto", package: "swift-crypto"),
             ]
         ),
         .testTarget(

@@ -3,7 +3,7 @@ import CacheLayer
 import MastodonModels
 import ATProtoAdapter
 import ArchaeopteryxCore
-import CryptoKit
+import Crypto
 
 /// OAuth 2.0 service for Mastodon API compatibility
 public actor OAuthService {
