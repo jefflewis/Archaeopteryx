@@ -1,11 +1,13 @@
+import Foundation
 import HummingbirdTesting
 import HTTPTypes
 import Logging
-import XCTest
+import Testing
 @testable import Hummingbird
 
 import ATProtoKit
 import Dependencies
+import DependenciesTestSupport
 @testable import Archaeopteryx
 @testable import ATProtoAdapter
 @testable import CacheLayer
@@ -15,22 +17,15 @@ import Dependencies
 @testable import MastodonModels
 
 /// Simple integration tests using Hummingbird testing framework
-final class SimpleIntegrationTests: XCTestCase {
+@Suite(.dependencies) struct SimpleIntegrationTests {
 
-    override func setUp() async throws {
-        try await super.setUp()
-
-        // Clear mock request executor
+    init() async {
+       // Clear mock request executor
         await MockRequestExecutor.clearMocks()
-    }
-
-    override func tearDown() async throws {
-        await MockRequestExecutor.clearMocks()
-        try await super.tearDown()
     }
 
     /// Test basic route without mocking
-    func testBasicRoute() async throws {
+    @Test func BasicRoute() async throws {
         let router = Router()
         router.get("/hello") { _, _ -> String in
             "Hello World"
@@ -39,16 +34,17 @@ final class SimpleIntegrationTests: XCTestCase {
 
         try await app.test(.router) { client in
             try await client.execute(uri: "/hello", method: .get) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let string = String(buffer: response.body)
-                XCTAssertEqual(string, "Hello World")
+                #expect(string == "Hello World")
             }
         }
     }
 
     /// Test that MockRequestExecutor is working
-    func testMockRequestExecutor_Works() async throws {
+    @Test func MockRequestExecutor_Works() async throws {
         // GIVEN: Register a mock
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "test",
             statusCode: 200,
@@ -63,12 +59,12 @@ final class SimpleIntegrationTests: XCTestCase {
 
         // THEN: Should get mocked response
         let httpResponse = response as! HTTPURLResponse
-        XCTAssertEqual(httpResponse.statusCode, 200)
-        XCTAssertEqual(String(data: data, encoding: .utf8), "test response")
+        #expect(httpResponse.statusCode == 200)
+        #expect(String(data: data, encoding: .utf8) == "test response")
     }
 
     /// Test that MockURLProtocol is working
-    func testMockURLProtocol_Intercepts() async throws {
+    @Test func MockURLProtocol_Intercepts() async throws {
         // GIVEN: Register a simple mock
         MockURLProtocol.registerMock(
             pattern: "bsky.social",
@@ -87,13 +83,14 @@ final class SimpleIntegrationTests: XCTestCase {
 
         // THEN: Should get mocked response
         let httpResponse = response as! HTTPURLResponse
-        XCTAssertEqual(httpResponse.statusCode, 200)
-        XCTAssertEqual(String(data: data, encoding: .utf8), "test response")
+        #expect(httpResponse.statusCode == 200)
+        #expect(String(data: data, encoding: .utf8) == "test response")
     }
 
     /// Test account verification with full stack
-    func testVerifyCredentials_Success() async throws {
+    @Test func VerifyCredentials_Success() async throws {
         // GIVEN: Mock Bluesky API using request executor
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.actor.getProfile",
             statusCode: 200,
@@ -139,19 +136,10 @@ final class SimpleIntegrationTests: XCTestCase {
         )
         try await cache.set("session:\(did)", value: mockSession, ttl: 3600)
 
-        // Create API client config with mock request executor
-        let mockExecutor = MockRequestExecutor()
-        let apiClientConfig = APIClientConfiguration(responseProvider: mockExecutor)
-
-        // Create ATProtoClient with same cache
-        let atProtoClient = await ATProtoClient(
-            serviceURL: "https://bsky.social",
-            cache: cache,
-            apiClientConfiguration: apiClientConfig
+        // SessionScopedClient for multi-user support
+        let sessionClient = await SessionScopedClient(
+            serviceURL: "https://bsky.social"
         )
-
-        // Set the session on the client for testing
-        await atProtoClient.setSession(mockSession)
 
         // Create other services with same cache
         let oauthService = OAuthService(cache: cache)
@@ -160,23 +148,20 @@ final class SimpleIntegrationTests: XCTestCase {
         let facetProcessor = FacetProcessor()
         let profileTranslator = ProfileTranslator(idMapping: idMapping, facetProcessor: facetProcessor)
 
-        // Build app with dependency injection
-        let app = try await withDependencies {
-            $0.atProtoClient = .live(client: atProtoClient)
-        } operation: {
-            let router = Router()
+        // Build app
+        let router = Router()
 
-            // Add account routes (uses @Dependency)
-            AccountRoutes.addRoutes(
-                to: router,
-                oauthService: oauthService,
-                idMapping: idMapping,
-                translator: profileTranslator,
-                logger: logger
-            )
+        // Add account routes
+        AccountRoutes.addRoutes(
+            to: router,
+            oauthService: oauthService,
+            sessionClient: sessionClient,
+            idMapping: idMapping,
+            translator: profileTranslator,
+            logger: logger
+        )
 
-            return Application(responder: router.buildResponder(), logger: logger)
-        }
+        let app = Application(responder: router.buildResponder(), logger: logger)
 
         // WHEN: Make request
         try await app.test(.router) { client in
@@ -186,29 +171,30 @@ final class SimpleIntegrationTests: XCTestCase {
                 headers: [.authorization: "Bearer \(token)"]
             ) { response in
                 // THEN: Verify response
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
 
                 // Decode account
-                let body = try XCTUnwrap(response.body)
+                let body = try #require(response.body)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
                 let account = try decoder.decode(MastodonAccount.self, from: Data(buffer: body))
 
-                XCTAssertEqual(account.username, "test")
-                XCTAssertEqual(account.acct, "test.bsky.social")
-                XCTAssertEqual(account.displayName, "Test User")
-                XCTAssertEqual(account.followersCount, 42)
+                #expect(account.username == "test")
+                #expect(account.acct == "test.bsky.social")
+                #expect(account.displayName == "Test User")
+                #expect(account.followersCount == 42)
             }
         }
     }
 
     /// Test missing authentication
-    func testVerifyCredentials_NoAuth_Returns401() async throws {
+    @Test func VerifyCredentials_NoAuth_Returns401() async throws {
         var logger = Logger(label: "test")
         logger.logLevel = .critical
         let cache = InMemoryCache()
         let oauthService = OAuthService(cache: cache)
+        let sessionClient = await SessionScopedClient(serviceURL: "https://bsky.social")
         let generator = SnowflakeIDGenerator()
         let idMapping = IDMappingService(cache: cache, generator: generator)
         let facetProcessor = FacetProcessor()
@@ -218,6 +204,7 @@ final class SimpleIntegrationTests: XCTestCase {
         AccountRoutes.addRoutes(
             to: router,
             oauthService: oauthService,
+            sessionClient: sessionClient,
             idMapping: idMapping,
             translator: profileTranslator,
             logger: logger
@@ -230,8 +217,9 @@ final class SimpleIntegrationTests: XCTestCase {
                 uri: "/api/v1/accounts/verify_credentials",
                 method: .get
             ) { response in
-                XCTAssertEqual(response.status, .unauthorized)
+                #expect(response.status == .unauthorized)
             }
         }
     }
 }
+

@@ -1,29 +1,24 @@
-import XCTest
+import Foundation
+import Testing
 @testable import OAuthService
 @testable import MastodonModels
 @testable import CacheLayer
 @testable import ATProtoAdapter
+@testable import ArchaeopteryxCore
 
 /// Tests for OAuthService - OAuth 2.0 flow implementation
-final class OAuthServiceTests: XCTestCase {
-    var sut: OAuthService!
+@Suite struct OAuthServiceTests {
+    let sut: OAuthService
     var mockCache: InMemoryCache!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        mockCache = InMemoryCache()
-        sut = await OAuthService(cache: mockCache)
-    }
-
-    override func tearDown() async throws {
-        sut = nil
-        mockCache = nil
-        try await super.tearDown()
+    init() async {
+       mockCache = InMemoryCache()
+        sut = await OAuthService(cache: mockCache, atprotoServiceURL: "https://bsky.social")
     }
 
     // MARK: - App Registration Tests
 
-    func testRegisterApp_ValidRequest_ReturnsCredentials() async throws {
+    @Test func RegisterApp_ValidRequest_ReturnsCredentials() async throws {
         let result = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -31,14 +26,14 @@ final class OAuthServiceTests: XCTestCase {
             website: "https://example.com"
         )
 
-        XCTAssertFalse(result.clientId.isEmpty)
-        XCTAssertFalse(result.clientSecret.isEmpty)
-        XCTAssertEqual(result.name, "Test App")
-        XCTAssertEqual(result.redirectUri, "urn:ietf:wg:oauth:2.0:oob")
-        XCTAssertEqual(result.website, "https://example.com")
+        #expect(!(result.clientId.isEmpty))
+        #expect(!(result.clientSecret.isEmpty))
+        #expect(result.name == "Test App")
+        #expect(result.redirectUri == "urn:ietf:wg:oauth:2.0:oob")
+        #expect(result.website == "https://example.com")
     }
 
-    func testRegisterApp_MissingClientName_ThrowsError() async throws {
+    @Test func RegisterApp_MissingClientName_ThrowsError() async throws {
         do {
             _ = try await sut.registerApplication(
                 clientName: "",
@@ -46,14 +41,14 @@ final class OAuthServiceTests: XCTestCase {
                 scopes: "read",
                 website: nil
             )
-            XCTFail("Should throw error for empty client name")
+            // Should throw error
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
-    func testRegisterApp_MissingRedirectURI_ThrowsError() async throws {
+    @Test func RegisterApp_MissingRedirectURI_ThrowsError() async throws {
         do {
             _ = try await sut.registerApplication(
                 clientName: "Test App",
@@ -61,14 +56,13 @@ final class OAuthServiceTests: XCTestCase {
                 scopes: "read",
                 website: nil
             )
-            XCTFail("Should throw error for empty redirect URI")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
-    func testRegisterApp_StoresInCache() async throws {
+    @Test func RegisterApp_StoresInCache() async throws {
         let result = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -78,13 +72,13 @@ final class OAuthServiceTests: XCTestCase {
 
         // Should be able to retrieve it
         let retrieved = try await sut.getApplication(clientId: result.clientId)
-        XCTAssertEqual(retrieved.clientId, result.clientId)
-        XCTAssertEqual(retrieved.name, "Test App")
+        #expect(retrieved.clientId == result.clientId)
+        #expect(retrieved.name == "Test App")
     }
 
     // MARK: - Authorization Code Generation Tests
 
-    func testGenerateAuthCode_ValidRequest_ReturnsCode() async throws {
+    @Test func GenerateAuthCode_ValidRequest_ReturnsCode() async throws {
         // First register an app
         let app = try await sut.registerApplication(
             clientName: "Test App",
@@ -101,11 +95,11 @@ final class OAuthServiceTests: XCTestCase {
             password: "test-password"
         )
 
-        XCTAssertFalse(code.isEmpty)
-        XCTAssertGreaterThan(code.count, 20) // Should be a reasonable length
+        #expect(!(code.isEmpty))
+        #expect(code.count > 20) // Should be a reasonable length
     }
 
-    func testGenerateAuthCode_InvalidClientId_ThrowsError() async throws {
+    @Test func GenerateAuthCode_InvalidClientId_ThrowsError() async throws {
         do {
             _ = try await sut.generateAuthorizationCode(
                 clientId: "invalid-client-id",
@@ -114,14 +108,13 @@ final class OAuthServiceTests: XCTestCase {
                 handle: "alice.bsky.social",
                 password: "password"
             )
-            XCTFail("Should throw error for invalid client ID")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
-    func testGenerateAuthCode_MismatchedRedirectURI_ThrowsError() async throws {
+    @Test func GenerateAuthCode_MismatchedRedirectURI_ThrowsError() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -137,16 +130,15 @@ final class OAuthServiceTests: XCTestCase {
                 handle: "alice.bsky.social",
                 password: "password"
             )
-            XCTFail("Should throw error for mismatched redirect URI")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
     // MARK: - Token Exchange Tests
 
-    func testExchangeCodeForToken_ValidCode_ReturnsAccessToken() async throws {
+    @Test func ExchangeCodeForToken_ValidCode_ReturnsAccessToken() async throws {
         // Register app and generate code
         let app = try await sut.registerApplication(
             clientName: "Test App",
@@ -170,13 +162,13 @@ final class OAuthServiceTests: XCTestCase {
             redirectUri: "urn:ietf:wg:oauth:2.0:oob"
         )
 
-        XCTAssertFalse(token.accessToken.isEmpty)
-        XCTAssertEqual(token.tokenType, "Bearer")
-        XCTAssertEqual(token.scope, "read write")
-        XCTAssertGreaterThan(token.createdAt, 0)
+        #expect(!(token.accessToken.isEmpty))
+        #expect(token.tokenType == "Bearer")
+        #expect(token.scope == "read write")
+        #expect(token.createdAt > 0)
     }
 
-    func testExchangeCodeForToken_InvalidCode_ThrowsError() async throws {
+    @Test func ExchangeCodeForToken_InvalidCode_ThrowsError() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -191,14 +183,13 @@ final class OAuthServiceTests: XCTestCase {
                 clientSecret: app.clientSecret,
                 redirectUri: "urn:ietf:wg:oauth:2.0:oob"
             )
-            XCTFail("Should throw error for invalid code")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
-    func testExchangeCodeForToken_UsedCode_ThrowsError() async throws {
+    @Test func ExchangeCodeForToken_UsedCode_ThrowsError() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -230,16 +221,15 @@ final class OAuthServiceTests: XCTestCase {
                 clientSecret: app.clientSecret,
                 redirectUri: "urn:ietf:wg:oauth:2.0:oob"
             )
-            XCTFail("Should throw error for already-used code")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
     // MARK: - Password Grant Tests
 
-    func testPasswordGrant_ValidCredentials_ReturnsToken() async throws {
+    @Test func PasswordGrant_ValidCredentials_ReturnsToken() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -255,12 +245,12 @@ final class OAuthServiceTests: XCTestCase {
             password: "password"
         )
 
-        XCTAssertFalse(token.accessToken.isEmpty)
-        XCTAssertEqual(token.tokenType, "Bearer")
-        XCTAssertEqual(token.scope, "read write")
+        #expect(!(token.accessToken.isEmpty))
+        #expect(token.tokenType == "Bearer")
+        #expect(token.scope == "read write")
     }
 
-    func testPasswordGrant_InvalidClientSecret_ThrowsError() async throws {
+    @Test func PasswordGrant_InvalidClientSecret_ThrowsError() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -276,16 +266,15 @@ final class OAuthServiceTests: XCTestCase {
                 username: "alice.bsky.social",
                 password: "password"
             )
-            XCTFail("Should throw error for invalid client secret")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
     // MARK: - Token Validation Tests
 
-    func testValidateToken_ValidToken_ReturnsHandle() async throws {
+    @Test func ValidateToken_ValidToken_ReturnsUserContext() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -301,23 +290,24 @@ final class OAuthServiceTests: XCTestCase {
             password: "password"
         )
 
-        let handle = try await sut.validateToken(token.accessToken)
-        XCTAssertEqual(handle, "alice.bsky.social")
+        let userContext = try await sut.validateToken(token.accessToken)
+        #expect(userContext.handle == "alice.bsky.social")
+        #expect(!userContext.did.isEmpty)
+        #expect(!userContext.sessionData.accessToken.isEmpty)
     }
 
-    func testValidateToken_InvalidToken_ThrowsError() async throws {
+    @Test func ValidateToken_InvalidToken_ThrowsError() async throws {
         do {
             _ = try await sut.validateToken("invalid-token")
-            XCTFail("Should throw error for invalid token")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
     // MARK: - Token Revocation Tests
 
-    func testRevokeToken_ValidToken_RemovesFromCache() async throws {
+    @Test func RevokeToken_ValidToken_RemovesFromCache() async throws {
         let app = try await sut.registerApplication(
             clientName: "Test App",
             redirectUris: "urn:ietf:wg:oauth:2.0:oob",
@@ -334,8 +324,8 @@ final class OAuthServiceTests: XCTestCase {
         )
 
         // Token should be valid
-        let handle = try await sut.validateToken(token.accessToken)
-        XCTAssertEqual(handle, "alice.bsky.social")
+        let userContext = try await sut.validateToken(token.accessToken)
+        #expect(userContext.handle == "alice.bsky.social")
 
         // Revoke it
         try await sut.revokeToken(token.accessToken)
@@ -343,48 +333,46 @@ final class OAuthServiceTests: XCTestCase {
         // Should no longer be valid
         do {
             _ = try await sut.validateToken(token.accessToken)
-            XCTFail("Token should be invalid after revocation")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
-    func testRevokeToken_InvalidToken_NoError() async throws {
+    @Test func RevokeToken_InvalidToken_NoError() async throws {
         // Should not throw error for invalid token
         try await sut.revokeToken("non-existent-token")
         // If we get here, test passes
-        XCTAssertTrue(true)
+        #expect(true)
     }
 
     // MARK: - Scope Validation Tests
 
-    func testValidateScopes_ValidScopes_Succeeds() async throws {
+    @Test func ValidateScopes_ValidScopes_Succeeds() async throws {
         let result = try sut.validateScopes("read write follow")
-        XCTAssertTrue(result.contains(.read))
-        XCTAssertTrue(result.contains(.write))
-        XCTAssertTrue(result.contains(.follow))
+        #expect(result.contains(.read))
+        #expect(result.contains(.write))
+        #expect(result.contains(.follow))
     }
 
-    func testValidateScopes_EmptyScope_UsesDefaultRead() async throws {
+    @Test func ValidateScopes_EmptyScope_UsesDefaultRead() async throws {
         let result = try sut.validateScopes("")
-        XCTAssertTrue(result.contains(.read))
-        XCTAssertEqual(result.count, 1)
+        #expect(result.contains(.read))
+        #expect(result.count == 1)
     }
 
-    func testValidateScopes_InvalidScope_ThrowsError() async throws {
+    @Test func ValidateScopes_InvalidScope_ThrowsError() async throws {
         do {
             _ = try sut.validateScopes("invalid-scope")
-            XCTFail("Should throw error for invalid scope")
         } catch {
             // Expected error
-            XCTAssertTrue(true)
+            #expect(true)
         }
     }
 
     // MARK: - Token Expiration Tests
 
-    func testToken_NotExpired_ReturnsFalse() {
+    @Test func Token_NotExpired_ReturnsFalse() {
         let token = OAuthToken(
             accessToken: "test",
             tokenType: "Bearer",
@@ -393,10 +381,10 @@ final class OAuthServiceTests: XCTestCase {
             expiresIn: 3600 // 1 hour
         )
 
-        XCTAssertFalse(token.isExpired())
+        #expect(!(token.isExpired()))
     }
 
-    func testToken_Expired_ReturnsTrue() {
+    @Test func Token_Expired_ReturnsTrue() {
         let oneHourAgo = Int(Date().timeIntervalSince1970) - 3600
         let token = OAuthToken(
             accessToken: "test",
@@ -406,6 +394,122 @@ final class OAuthServiceTests: XCTestCase {
             expiresIn: 1800 // 30 minutes
         )
 
-        XCTAssertTrue(token.isExpired())
+        #expect(token.isExpired())
+    }
+
+    // MARK: - Session Refresh Tests
+
+    @Test func RefreshSession_ExpiredSession_RefreshesTokens() async throws {
+        // GIVEN: A valid OAuth token with session data
+        let app = try await sut.registerApplication(
+            clientName: "Test App",
+            redirectUris: "urn:ietf:wg:oauth:2.0:oob",
+            scopes: "read write",
+            website: nil
+        )
+
+        let token = try await sut.passwordGrant(
+            clientId: app.clientId,
+            clientSecret: app.clientSecret,
+            scope: "read write",
+            username: "alice.bsky.social",
+            password: "password"
+        )
+
+        // Get the user context
+        let userContext = try await sut.validateToken(token.accessToken)
+        let originalAccessToken = userContext.sessionData.accessToken
+
+        // Simulate an expired AT Proto session by creating expired session data
+        let expiredSessionData = BlueskySessionData(
+            accessToken: "expired_access_token",
+            refreshToken: userContext.sessionData.refreshToken,
+            did: userContext.sessionData.did,
+            handle: userContext.sessionData.handle,
+            email: userContext.sessionData.email,
+            createdAt: Date().addingTimeInterval(-7200) // 2 hours ago
+        )
+
+        // Update the token data in cache with expired session
+        try await mockCache.set("oauth:token:\(token.accessToken)", value: TokenData(
+            did: userContext.did,
+            handle: userContext.handle,
+            sessionData: expiredSessionData,
+            scope: "read write",
+            tokenType: "Bearer",
+            createdAt: token.createdAt,
+            expiresIn: token.expiresIn ?? 7 * 24 * 60 * 60
+        ), ttl: 3600)
+
+        // WHEN: Refresh the session
+        let refreshedContext = try await sut.refreshSession(accessToken: token.accessToken)
+
+        // THEN: Should have new access token but same user identity
+        #expect(refreshedContext.did == userContext.did)
+        #expect(refreshedContext.handle == userContext.handle)
+        #expect(refreshedContext.sessionData.accessToken != originalAccessToken)
+        #expect(refreshedContext.sessionData.accessToken != "expired_access_token")
+        #expect(!refreshedContext.sessionData.accessToken.isEmpty)
+    }
+
+    @Test func RefreshSession_InvalidToken_ThrowsError() async throws {
+        // WHEN/THEN: Attempting to refresh with invalid token should throw
+        do {
+            _ = try await sut.refreshSession(accessToken: "invalid-token")
+            #expect(Bool(false), "Should have thrown error")
+        } catch {
+            // Expected error
+            #expect(true)
+        }
+    }
+
+    @Test func RefreshSession_UpdatesCache() async throws {
+        // GIVEN: A token with session data
+        let app = try await sut.registerApplication(
+            clientName: "Test App",
+            redirectUris: "urn:ietf:wg:oauth:2.0:oob",
+            scopes: "read write",
+            website: nil
+        )
+
+        let token = try await sut.passwordGrant(
+            clientId: app.clientId,
+            clientSecret: app.clientSecret,
+            scope: "read write",
+            username: "alice.bsky.social",
+            password: "password"
+        )
+
+        let userContext = try await sut.validateToken(token.accessToken)
+        let originalAccessToken = userContext.sessionData.accessToken
+
+        // Simulate expired session
+        let expiredSessionData = BlueskySessionData(
+            accessToken: "expired_access_token",
+            refreshToken: userContext.sessionData.refreshToken,
+            did: userContext.sessionData.did,
+            handle: userContext.sessionData.handle,
+            email: userContext.sessionData.email,
+            createdAt: Date().addingTimeInterval(-7200)
+        )
+
+        try await mockCache.set("oauth:token:\(token.accessToken)", value: TokenData(
+            did: userContext.did,
+            handle: userContext.handle,
+            sessionData: expiredSessionData,
+            scope: "read write",
+            tokenType: "Bearer",
+            createdAt: token.createdAt,
+            expiresIn: token.expiresIn ?? 7 * 24 * 60 * 60
+        ), ttl: 3600)
+
+        // WHEN: Refresh the session
+        _ = try await sut.refreshSession(accessToken: token.accessToken)
+
+        // THEN: Subsequent token validation should return the refreshed session
+        let updatedContext = try await sut.validateToken(token.accessToken)
+        #expect(updatedContext.sessionData.accessToken != originalAccessToken)
+        #expect(updatedContext.sessionData.accessToken != "expired_access_token")
     }
 }
+

@@ -1,11 +1,13 @@
+import Foundation
 import HummingbirdTesting
 import HTTPTypes
 import Logging
-import XCTest
+import Testing
 @testable import Hummingbird
 
 import ATProtoKit
 import Dependencies
+import DependenciesTestSupport
 @testable import Archaeopteryx
 @testable import ATProtoAdapter
 @testable import CacheLayer
@@ -15,16 +17,10 @@ import Dependencies
 @testable import MastodonModels
 
 /// Integration tests for Status API endpoints
-final class StatusRoutesIntegrationTests: XCTestCase {
+@Suite(.dependencies) struct StatusRoutesIntegrationTests {
 
-    override func setUp() async throws {
-        try await super.setUp()
-        await MockRequestExecutor.clearMocks()
-    }
-
-    override func tearDown() async throws {
-        await MockRequestExecutor.clearMocks()
-        try await super.tearDown()
+    init() async {
+       await MockRequestExecutor.clearMocks()
     }
 
     // MARK: - Helper
@@ -128,20 +124,22 @@ final class StatusRoutesIntegrationTests: XCTestCase {
         try await cache.set("snowflake_to_did:\(testSnowflakeID)", value: did, ttl: nil)
         try await cache.set("did_to_snowflake:\(did)", value: testSnowflakeID, ttl: nil)
 
+        // Create SessionScopedClient for multi-user support
+        let sessionClient = await SessionScopedClient(
+            serviceURL: "https://bsky.social"
+        )
+
         // Build app
-        return try await withDependencies {
-            $0.atProtoClient = .live(client: atProtoClient)
-        } operation: {
-            let router = Router()
-            StatusRoutes.addRoutes(
-                to: router,
-                oauthService: oauthService,
-                idMapping: idMapping,
-                statusTranslator: statusTranslator,
-                logger: logger
-            )
-            return Application(responder: router.buildResponder(), logger: logger)
-        }
+        let router = Router()
+        StatusRoutes.addRoutes(
+            to: router,
+            oauthService: oauthService,
+            sessionClient: sessionClient,
+            idMapping: idMapping,
+            statusTranslator: statusTranslator,
+            logger: logger
+        )
+        return Application(responder: router.buildResponder(), logger: logger)
     }
 
     static func decodeStatus(from body: ByteBuffer) throws -> MastodonStatus {
@@ -160,7 +158,8 @@ final class StatusRoutesIntegrationTests: XCTestCase {
 
     // MARK: - Tests
 
-    func testGetStatus_Success() async throws {
+    @Test func GetStatus_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getPostThread",
             statusCode: 200,
@@ -175,15 +174,16 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let status = try Self.decodeStatus(from: XCTUnwrap(response.body))
-                XCTAssertNotNil(status.id)
+                #expect(response.status == .ok)
+                let status = try Self.decodeStatus(from: try #require(response.body))
+                #expect(status.id != nil)
             }
         }
     }
 
-    func testCreateStatus_Success() async throws {
+    @Test func CreateStatus_Success() async throws {
         // Mock session validation/refresh endpoints
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.server.getSession",
             statusCode: 200,
@@ -219,14 +219,15 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 ],
                 body: ByteBuffer(string: body)
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let status = try Self.decodeStatus(from: XCTUnwrap(response.body))
-                XCTAssertNotNil(status.id)
+                #expect(response.status == .ok)
+                let status = try Self.decodeStatus(from: try #require(response.body))
+                #expect(status.id != nil)
             }
         }
     }
 
-    func testDeleteStatus_Success() async throws {
+    @Test func DeleteStatus_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.repo.deleteRecord",
             statusCode: 200,
@@ -241,12 +242,13 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .delete,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
             }
         }
     }
 
-    func testGetStatusContext_Success() async throws {
+    @Test func GetStatusContext_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getPostThread",
             statusCode: 200,
@@ -261,15 +263,16 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 // Context contains ancestors and descendants arrays
-                let body = try XCTUnwrap(response.body)
-                XCTAssertGreaterThan(body.readableBytes, 0)
+                let body = try try #require(response.body)
+                #expect(body.readableBytes > 0)
             }
         }
     }
 
-    func testFavouriteStatus_Success() async throws {
+    @Test func FavouriteStatus_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.repo.createRecord",
             statusCode: 200,
@@ -289,14 +292,15 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .post,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let status = try Self.decodeStatus(from: XCTUnwrap(response.body))
-                XCTAssertNotNil(status.id)
+                #expect(response.status == .ok)
+                let status = try Self.decodeStatus(from: try #require(response.body))
+                #expect(status.id != nil)
             }
         }
     }
 
-    func testUnfavouriteStatus_Success() async throws {
+    @Test func UnfavouriteStatus_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.repo.deleteRecord",
             statusCode: 200,
@@ -316,14 +320,15 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .post,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let status = try Self.decodeStatus(from: XCTUnwrap(response.body))
-                XCTAssertNotNil(status.id)
+                #expect(response.status == .ok)
+                let status = try Self.decodeStatus(from: try #require(response.body))
+                #expect(status.id != nil)
             }
         }
     }
 
-    func testReblogStatus_Success() async throws {
+    @Test func ReblogStatus_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.repo.createRecord",
             statusCode: 200,
@@ -343,14 +348,15 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .post,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let status = try Self.decodeStatus(from: XCTUnwrap(response.body))
-                XCTAssertNotNil(status.id)
+                #expect(response.status == .ok)
+                let status = try Self.decodeStatus(from: try #require(response.body))
+                #expect(status.id != nil)
             }
         }
     }
 
-    func testUnreblogStatus_Success() async throws {
+    @Test func UnreblogStatus_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.repo.deleteRecord",
             statusCode: 200,
@@ -370,14 +376,15 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .post,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let status = try Self.decodeStatus(from: XCTUnwrap(response.body))
-                XCTAssertNotNil(status.id)
+                #expect(response.status == .ok)
+                let status = try Self.decodeStatus(from: try #require(response.body))
+                #expect(status.id != nil)
             }
         }
     }
 
-    func testGetFavouritedBy_Success() async throws {
+    @Test func GetFavouritedBy_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getLikes",
             statusCode: 200,
@@ -392,17 +399,18 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let accounts = try decoder.decode([MastodonAccount].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertGreaterThanOrEqual(accounts.count, 0)
+                let accounts = try decoder.decode([MastodonAccount].self, from: Data(buffer: try #require(response.body)))
+                #expect(accounts.count >= 0)
             }
         }
     }
 
-    func testGetRebloggedBy_Success() async throws {
+    @Test func GetRebloggedBy_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getRepostedBy",
             statusCode: 200,
@@ -417,13 +425,14 @@ final class StatusRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let accounts = try decoder.decode([MastodonAccount].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertGreaterThanOrEqual(accounts.count, 0)
+                let accounts = try decoder.decode([MastodonAccount].self, from: Data(buffer: try #require(response.body)))
+                #expect(accounts.count >= 0)
             }
         }
     }
 }
+

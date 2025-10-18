@@ -1,9 +1,10 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MastodonModels
 
-final class MastodonStatusTests: XCTestCase {
+@Suite struct MastodonStatusTests {
 
-    func testStatusInitialization() throws {
+    @Test func StatusInitialization() throws {
         let account = MastodonAccount(
             id: "123",
             username: "alice",
@@ -39,18 +40,18 @@ final class MastodonStatusTests: XCTestCase {
             spoilerText: ""
         )
 
-        XCTAssertEqual(status.id, "987654321")
-        XCTAssertEqual(status.content, "<p>Hello, world!</p>")
-        XCTAssertEqual(status.visibility, .public)
-        XCTAssertEqual(status.repliesCount, 5)
-        XCTAssertEqual(status.reblogsCount, 10)
-        XCTAssertEqual(status.favouritesCount, 15)
-        XCTAssertFalse(status.reblogged)
-        XCTAssertFalse(status.favourited)
-        XCTAssertFalse(status.sensitive)
+        #expect(status.id == "987654321")
+        #expect(status.content == "<p>Hello, world!</p>")
+        #expect(status.visibility == .public)
+        #expect(status.repliesCount == 5)
+        #expect(status.reblogsCount == 10)
+        #expect(status.favouritesCount == 15)
+        #expect(!(status.reblogged))
+        #expect(!(status.favourited))
+        #expect(!(status.sensitive))
     }
 
-    func testStatusWithReply() throws {
+    @Test func StatusWithReply() throws {
         let account = MastodonAccount(
             id: "123",
             username: "alice",
@@ -88,11 +89,11 @@ final class MastodonStatusTests: XCTestCase {
             inReplyToAccountId: "789"
         )
 
-        XCTAssertEqual(status.inReplyToId, "123456")
-        XCTAssertEqual(status.inReplyToAccountId, "789")
+        #expect(status.inReplyToId == "123456")
+        #expect(status.inReplyToAccountId == "789")
     }
 
-    func testStatusJSONEncoding() throws {
+    @Test func StatusJSONEncoding() throws {
         let account = MastodonAccount(
             id: "123",
             username: "test",
@@ -133,7 +134,7 @@ final class MastodonStatusTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
 
         let data = try encoder.encode(status)
-        XCTAssertFalse(data.isEmpty)
+        #expect(!(data.isEmpty))
 
         // Verify it can be decoded back
         let decoder = JSONDecoder()
@@ -141,7 +142,8 @@ final class MastodonStatusTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
 
         let decoded = try decoder.decode(MastodonStatus.self, from: data)
-        XCTAssertEqual(decoded.id, status.id)
-        XCTAssertEqual(decoded.content, status.content)
+        #expect(decoded.id == status.id)
+        #expect(decoded.content == status.content)
     }
 }
+

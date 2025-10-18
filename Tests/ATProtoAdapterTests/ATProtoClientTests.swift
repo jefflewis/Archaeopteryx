@@ -1,16 +1,15 @@
-import XCTest
+import Testing
 @testable import ATProtoAdapter
 @testable import CacheLayer
 
 /// Tests for ATProtoClient
 /// These are unit tests using mocks - integration tests would require real Bluesky credentials
-final class ATProtoClientTests: XCTestCase {
-    var sut: ATProtoClient!
+@Suite struct ATProtoClientTests {
+    let sut: ATProtoClient
     var mockCache: InMemoryCache!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        mockCache = InMemoryCache()
+    init() async {
+       mockCache = InMemoryCache()
 
         sut = await ATProtoClient(
             serviceURL: "https://bsky.social",
@@ -18,38 +17,31 @@ final class ATProtoClientTests: XCTestCase {
         )
     }
 
-    override func tearDown() async throws {
-        sut = nil
-        mockCache = nil
-        try await super.tearDown()
-    }
-
     // MARK: - Initialization Tests
 
-    func testInit_ValidConfiguration_CreatesClient() async throws {
-        XCTAssertNotNil(sut)
+    @Test func Init_ValidConfiguration_CreatesClient() async throws {
+        // Client initialization succeeded if this test runs without throwing
     }
 
-    func testInit_CustomServiceURL_UsesProvidedURL() async throws {
+    @Test func Init_CustomServiceURL_UsesProvidedURL() async throws {
         let customURL = "https://custom.bsky.social"
         let client = await ATProtoClient(
             serviceURL: customURL,
             cache: mockCache
         )
-
-        XCTAssertNotNil(client)
+        // Client initialization succeeded if this test runs without throwing
     }
 
     // MARK: - Session Management Tests
 
-    func testGetSession_NoSession_ReturnsNil() async throws {
+    @Test func GetSession_NoSession_ReturnsNil() async throws {
         let session = await sut.getCurrentSession()
-        XCTAssertNil(session)
+        #expect(session == nil)
     }
 
     // MARK: - Cache Integration Tests
 
-    func testSession_FromCache_LoadsSuccessfully() async throws {
+    @Test func Session_FromCache_LoadsSuccessfully() async throws {
         // Test that we can store and retrieve session from cache
         let testSession = ATProtoSession(
             did: "did:plc:test123",
@@ -63,8 +55,8 @@ final class ATProtoClientTests: XCTestCase {
 
         // Verify it can be retrieved
         let retrieved: ATProtoSession? = try await mockCache.get("session:did:plc:test123")
-        XCTAssertEqual(retrieved?.did, testSession.did)
-        XCTAssertEqual(retrieved?.handle, testSession.handle)
+        #expect(retrieved?.did == testSession.did)
+        #expect(retrieved?.handle == testSession.handle)
     }
 
     // NOTE: Integration tests for actual API calls (createSession, refreshSession, getProfile, etc.)
@@ -73,10 +65,10 @@ final class ATProtoClientTests: XCTestCase {
 
     // MARK: - Configuration Tests
 
-    func testConfiguration_DefaultServiceURL_UsesBlueskyProduction() async throws {
+    @Test func Configuration_DefaultServiceURL_UsesBlueskyProduction() async throws {
         let defaultClient = await ATProtoClient(cache: mockCache)
-        XCTAssertNotNil(defaultClient)
         // Default should be https://bsky.social
+        // Client initialization succeeded if this test runs without throwing
     }
 }
 
@@ -90,3 +82,4 @@ extension ATProtoSession: Equatable {
                lhs.refreshToken == rhs.refreshToken
     }
 }
+

@@ -63,15 +63,18 @@ struct ArchaeopteryxApp {
             "atproto": "\(config.atproto.serviceURL)"
         ])
 
-        // Initialize cache
+        // Initialize cache (and ValkeyService if using Valkey)
         logger.info("Initializing cache connection")
-        let cache = try await createCache(config: config, logger: logger)
+        let (cache, valkeyService) = try await createCache(config: config, logger: logger)
 
         // Initialize ID mapping
         let snowflakeGenerator = SnowflakeIDGenerator()
         let idMapping = IDMappingService(cache: cache, generator: snowflakeGenerator)
 
-        // Initialize AT Protocol client
+        // Initialize session-scoped AT Protocol client (for multi-user support)
+        let sessionClient = await SessionScopedClient(serviceURL: config.atproto.serviceURL)
+
+        // Initialize AT Protocol client (backward compatibility for routes not yet migrated)
         let atprotoClient = await ATProtoClient(
             serviceURL: config.atproto.serviceURL,
             cache: cache
@@ -94,8 +97,11 @@ struct ArchaeopteryxApp {
             statusTranslator: statusTranslator
         )
 
-        // Initialize OAuth service
-        let oauthService = OAuthService(cache: cache)
+        // Initialize OAuth service (with AT Proto service URL for creating sessions)
+        let oauthService = OAuthService(
+            cache: cache,
+            atprotoServiceURL: config.atproto.serviceURL
+        )
 
         // Set up dependencies for the application
         // The live ATProtoClient dependency is injected here and will be available
@@ -142,37 +148,41 @@ struct ArchaeopteryxApp {
             // Add instance routes
             InstanceRoutes.addRoutes(to: router, logger: logger, config: config)
 
-            // Add account routes (ATProtoClient is injected via @Dependency)
+            // Add account routes (using session-scoped client for multi-user support)
             AccountRoutes.addRoutes(
                 to: router,
                 oauthService: oauthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 translator: profileTranslator,
                 logger: logger
             )
 
-            // Add status routes (ATProtoClient injected via @Dependency)
+            // Add status routes (using session-scoped client for multi-user support)
             StatusRoutes.addRoutes(
                 to: router,
                 oauthService: oauthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: logger
             )
 
-            // Add timeline routes (ATProtoClient injected via @Dependency)
+            // Add timeline routes (using session-scoped client for multi-user support)
             TimelineRoutes.addRoutes(
                 to: router,
                 oauthService: oauthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: logger
             )
 
-            // Add notification routes (ATProtoClient injected via @Dependency)
+            // Add notification routes (using session-scoped client for multi-user support)
             NotificationRoutes.addRoutes(
                 to: router,
                 oauthService: oauthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: logger
@@ -197,11 +207,12 @@ struct ArchaeopteryxApp {
                 cache: cache
             )
 
-            // Add list routes (ATProtoClient injected via @Dependency)
+            // Add list routes (using session-scoped client for multi-user support)
             ListRoutes.addRoutes(
                 to: router,
                 logger: logger,
                 oauthService: oauthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 cache: cache
@@ -214,6 +225,12 @@ struct ArchaeopteryxApp {
                 logger: logger
             )
 
+            // Add ValkeyService to application lifecycle (if using Valkey)
+            if let valkeyService = valkeyService {
+                app.addServices(valkeyService)
+                logger.info("Added ValkeyService to application lifecycle")
+            }
+
             // Add OTel services to application lifecycle (if enabled)
             if let metricsReader = otelServices.metricsReader {
                 app.addServices(metricsReader)
@@ -224,25 +241,42 @@ struct ArchaeopteryxApp {
 
             logger.info("Starting Archaeopteryx on http://\(config.server.hostname):\(config.server.port)")
 
-            // Run application
+            // Run application - this will start all services including ValkeyService
             try await app.runService()
         }
     }
 
     /// Create cache instance based on configuration
-    static func createCache(config: ArchaeopteryxConfiguration, logger: Logger) async throws -> InMemoryCache {
-        // For now, use in-memory cache for development
-        // In production, this would use ValkeyCache
-        logger.info("Using in-memory cache for development")
-        return InMemoryCache()
+    /// Returns tuple of (cache, valkeyService) where valkeyService is nil for in-memory cache
+    static func createCache(config: ArchaeopteryxConfiguration, logger: Logger) async throws -> (any CacheService & CacheProtocol, ValkeyService?) {
+        // Check if Valkey is configured (production)
+        if config.valkey.enabled {
+            logger.info("Using Valkey/Redis cache", metadata: [
+                "host": "\(config.valkey.host)",
+                "port": "\(config.valkey.port)",
+                "database": "\(config.valkey.database)"
+            ])
 
-        // TODO: Production would look like:
-        // return try await ValkeyCache(
-        //     host: config.valkey.host,
-        //     port: config.valkey.port,
-        //     password: config.valkey.password.isEmpty ? nil : config.valkey.password,
-        //     database: config.valkey.database
-        // )
+            // Create ValkeyService which will manage the ValkeyClient lifecycle
+            let valkeyService = ValkeyService(
+                hostname: config.valkey.host,
+                port: config.valkey.port,
+                logger: logger
+            )
+
+            // Inject the live Redis client dependency using ValkeyService's client
+            let cache = await withDependencies {
+                $0.redisClient = .live(client: valkeyService.valkeyClient)
+            } operation: {
+                ValkeyCache()
+            }
+
+            return (cache, valkeyService)
+        } else {
+            // Development: use in-memory cache
+            logger.info("Using in-memory cache for development")
+            return (InMemoryCache(), nil)
+        }
     }
 
     /// Parse log level string to Logger.Level

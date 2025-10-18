@@ -1,5 +1,5 @@
 {
-  "originHash" : "475a1d6ef0ddc3bd7929bd6853dce3a1f975549d28987b8376c1d33f0021b245",
+  "originHash" : "763aee3799105b8bbe678d52b980ea4c57a4e3abcd077c3780ec7dd5758366b3",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -44,15 +44,6 @@
       "state" : {
         "revision" : "3ae359b1bb1e72378ed43b59fdcd4d44cac5d7a4",
         "version" : "2.16.0"
-      }
-    },
-    {
-      "identity" : "redistack",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/swift-server/RediStack.git",
-      "state" : {
-        "revision" : "622ce440f90d79b58e45f3a3efdd64c51d1dfd17",
-        "version" : "1.6.2"
       }
     },
     {
@@ -152,6 +143,24 @@
       "state" : {
         "revision" : "baa932c1336f7894145cbaafcd34ce2dd0b77c97",
         "version" : "1.3.1"
+      }
+    },
+    {
+      "identity" : "swift-docc-plugin",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-docc-plugin",
+      "state" : {
+        "revision" : "3e4f133a77e644a5812911a0513aeb7288b07d06",
+        "version" : "1.4.5"
+      }
+    },
+    {
+      "identity" : "swift-docc-symbolkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/swiftlang/swift-docc-symbolkit",
+      "state" : {
+        "revision" : "b45d1f2ed151d057b54504d653e0da5552844e34",
+        "version" : "1.0.0"
       }
     },
     {
@@ -305,6 +314,15 @@
       "state" : {
         "revision" : "3da4b79545b38cf5551f1c525d800756f38cb697",
         "version" : "1.0.0-beta.3"
+      }
+    },
+    {
+      "identity" : "valkey-swift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/valkey-io/valkey-swift.git",
+      "state" : {
+        "revision" : "4df9a1db37d932366fee3de5e413514e9e2fda33",
+        "version" : "0.3.0"
       }
     },
     {

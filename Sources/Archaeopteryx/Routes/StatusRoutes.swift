@@ -8,7 +8,6 @@ import IDMapping
 import TranslationLayer
 import CacheLayer
 import ArchaeopteryxCore
-import Dependencies
 
 // MARK: - Request/Response Models
 
@@ -27,7 +26,7 @@ struct CreateStatusRequest: Decodable {
 /// Status management routes for Mastodon API compatibility
 struct StatusRoutes: Sendable {
     let oauthService: OAuthService
-    @Dependency(\.atProtoClient) var atprotoClient
+    let sessionClient: SessionScopedClient
     let idMapping: IDMappingService
     let statusTranslator: StatusTranslator
     let logger: Logger
@@ -36,12 +35,14 @@ struct StatusRoutes: Sendable {
     static func addRoutes(
         to router: Router<some RequestContext>,
         oauthService: OAuthService,
+        sessionClient: SessionScopedClient,
         idMapping: IDMappingService,
         statusTranslator: StatusTranslator,
         logger: Logger
     ) {
         let routes = StatusRoutes(
             oauthService: oauthService,
+            sessionClient: sessionClient,
             idMapping: idMapping,
             statusTranslator: statusTranslator,
             logger: logger
@@ -115,8 +116,8 @@ struct StatusRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to AT URI
             guard let atURI = await idMapping.getATURI(forSnowflakeID: snowflakeID) else {
@@ -124,8 +125,11 @@ struct StatusRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Status not found", status: .notFound)
             }
 
-            // Get post from AT Proto
-            let post = try await atprotoClient.getPost(atURI)
+            // Get post from AT Proto with user's session
+            let post = try await sessionClient.getPost(
+                uri: atURI,
+                session: userContext.sessionData
+            )
 
             // Translate to Mastodon status
             let status = try await statusTranslator.translate(post)
@@ -164,15 +168,16 @@ struct StatusRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
-            // Create post on AT Proto
-            let post = try await atprotoClient.createPost(
-                createRequest.status,
-                createRequest.inReplyToId,
-                nil,
-                nil
+            // Create post on AT Proto with user's session
+            let post = try await sessionClient.createPost(
+                text: createRequest.status,
+                replyToURI: createRequest.inReplyToId,
+                embedImages: nil,
+                embedExternal: nil,
+                session: userContext.sessionData
             )
 
             // Translate to Mastodon status
@@ -201,8 +206,8 @@ struct StatusRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to AT URI
             guard let atURI = await idMapping.getATURI(forSnowflakeID: snowflakeID) else {
@@ -210,8 +215,11 @@ struct StatusRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Status not found", status: .notFound)
             }
 
-            // Delete post from AT Proto
-            try await atprotoClient.deletePost(atURI)
+            // Delete post from AT Proto with user's session
+            try await sessionClient.deletePost(
+                uri: atURI,
+                session: userContext.sessionData
+            )
 
             logger.info("Status deleted", metadata: ["id": "\(snowflakeID)"])
 
@@ -238,8 +246,8 @@ struct StatusRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to AT URI
             guard let atURI = await idMapping.getATURI(forSnowflakeID: snowflakeID) else {
@@ -247,8 +255,12 @@ struct StatusRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Status not found", status: .notFound)
             }
 
-            // Get post thread from AT Proto
-            let thread = try await atprotoClient.getPostThread(atURI, 10)
+            // Get post thread from AT Proto with user's session
+            let thread = try await sessionClient.getPostThread(
+                uri: atURI,
+                depth: 10,
+                session: userContext.sessionData
+            )
 
             // Translate ancestors and descendants
             let ancestors = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
@@ -301,80 +313,164 @@ struct StatusRoutes: Sendable {
 
     /// POST /api/v1/statuses/:id/favourite - Favourite a status
     func favouriteStatus(request: Request, context: some RequestContext) async throws -> Response {
-        return try await handleInteraction(
-            request: request,
-            context: context,
-            action: "favourite",
-            operation: { atURI, cid in
-                try await atprotoClient.likePost(atURI, cid)
-            }
-        )
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
+
+        do {
+            let userContext = try await oauthService.validateToken(token)
+
+            return try await handleInteraction(
+                request: request,
+                context: context,
+                userContext: userContext,
+                action: "favourite",
+                operation: { atURI, cid, session in
+                    try await self.sessionClient.likePost(
+                        uri: atURI,
+                        cid: cid,
+                        session: session
+                    )
+                }
+            )
+        } catch {
+            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
+        }
     }
 
     /// POST /api/v1/statuses/:id/unfavourite - Unfavourite a status
     func unfavouriteStatus(request: Request, context: some RequestContext) async throws -> Response {
-        return try await handleInteraction(
-            request: request,
-            context: context,
-            action: "unfavourite",
-            operation: { atURI, _ in
-                // Note: Unlike requires the like record URI which we don't track
-                // For now, we'll just return success without actually unliking
-                // This is a known limitation until we implement like record tracking
-                return "" // Return empty string as placeholder URI
-            }
-        )
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
+
+        do {
+            let userContext = try await oauthService.validateToken(token)
+
+            return try await handleInteraction(
+                request: request,
+                context: context,
+                userContext: userContext,
+                action: "unfavourite",
+                operation: { atURI, _, session in
+                    // Note: Unlike requires the like record URI which we don't track
+                    // For now, we'll just return success without actually unliking
+                    // This is a known limitation until we implement like record tracking
+                    return "" // Return empty string as placeholder URI
+                }
+            )
+        } catch {
+            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
+        }
     }
 
     /// POST /api/v1/statuses/:id/reblog - Reblog a status
     func reblogStatus(request: Request, context: some RequestContext) async throws -> Response {
-        return try await handleInteraction(
-            request: request,
-            context: context,
-            action: "reblog",
-            operation: { atURI, cid in
-                try await atprotoClient.repost(atURI, cid)
-            }
-        )
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
+
+        do {
+            let userContext = try await oauthService.validateToken(token)
+
+            return try await handleInteraction(
+                request: request,
+                context: context,
+                userContext: userContext,
+                action: "reblog",
+                operation: { atURI, cid, session in
+                    try await self.sessionClient.repost(
+                        uri: atURI,
+                        cid: cid,
+                        session: session
+                    )
+                }
+            )
+        } catch {
+            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
+        }
     }
 
     /// POST /api/v1/statuses/:id/unreblog - Unreblog a status
     func unreblogStatus(request: Request, context: some RequestContext) async throws -> Response {
-        return try await handleInteraction(
-            request: request,
-            context: context,
-            action: "unreblog",
-            operation: { atURI, _ in
-                // Note: Unrepost requires the repost record URI which we don't track
-                // For now, we'll just return success without actually unreposting
-                // This is a known limitation until we implement repost record tracking
-                return "" // Return empty string as placeholder URI
-            }
-        )
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
+
+        do {
+            let userContext = try await oauthService.validateToken(token)
+
+            return try await handleInteraction(
+                request: request,
+                context: context,
+                userContext: userContext,
+                action: "unreblog",
+                operation: { atURI, _, session in
+                    // Note: Unrepost requires the repost record URI which we don't track
+                    // For now, we'll just return success without actually unreposting
+                    // This is a known limitation until we implement repost record tracking
+                    return "" // Return empty string as placeholder URI
+                }
+            )
+        } catch {
+            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
+        }
     }
 
     /// GET /api/v1/statuses/:id/favourited_by - Get who favourited
     func getFavouritedBy(request: Request, context: some RequestContext) async throws -> Response {
-        return try await handleGetInteractors(
-            request: request,
-            context: context,
-            interactionType: "favourited",
-            fetcher: { atURI in
-                try await atprotoClient.getLikedBy(atURI, 20, nil)
-            }
-        )
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
+
+        do {
+            let userContext = try await oauthService.validateToken(token)
+
+            return try await handleGetInteractors(
+                request: request,
+                context: context,
+                userContext: userContext,
+                interactionType: "favourited",
+                fetcher: { atURI, session in
+                    try await self.sessionClient.getLikedBy(
+                        uri: atURI,
+                        limit: 20,
+                        cursor: nil,
+                        session: session
+                    )
+                }
+            )
+        } catch {
+            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
+        }
     }
 
     /// GET /api/v1/statuses/:id/reblogged_by - Get who reblogged
     func getRebloggedBy(request: Request, context: some RequestContext) async throws -> Response {
-        return try await handleGetInteractors(
-            request: request,
-            context: context,
-            interactionType: "reblogged",
-            fetcher: { atURI in
-                try await atprotoClient.getRepostedBy(atURI, 20, nil)
-            }
-        )
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
+
+        do {
+            let userContext = try await oauthService.validateToken(token)
+
+            return try await handleGetInteractors(
+                request: request,
+                context: context,
+                userContext: userContext,
+                interactionType: "reblogged",
+                fetcher: { atURI, session in
+                    try await self.sessionClient.getRepostedBy(
+                        uri: atURI,
+                        limit: 20,
+                        cursor: nil,
+                        session: session
+                    )
+                }
+            )
+        } catch {
+            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
+        }
     }
 
     // MARK: - Helper Methods
@@ -383,14 +479,10 @@ struct StatusRoutes: Sendable {
     private func handleInteraction(
         request: Request,
         context: some RequestContext,
+        userContext: UserContext,
         action: String,
-        operation: (String, String) async throws -> String
+        operation: (String, String, BlueskySessionData) async throws -> String
     ) async throws -> Response {
-        // Verify authentication
-        guard let token = try await extractBearerToken(from: request) else {
-            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
-        }
-
         // Extract ID from path
         guard let idString = context.parameters.get("id", as: String.self),
               let snowflakeID = Int64(idString) else {
@@ -399,9 +491,6 @@ struct StatusRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
-
             // Map snowflake ID to AT URI
             guard let atURI = await idMapping.getATURI(forSnowflakeID: snowflakeID) else {
                 logger.warning("No AT URI found for snowflake ID", metadata: ["snowflake_id": "\(snowflakeID)"])
@@ -409,14 +498,20 @@ struct StatusRoutes: Sendable {
             }
 
             // Fetch the post first to get its CID (required by ATProtoKit for write operations)
-            let originalPost = try await atprotoClient.getPost(atURI)
+            let originalPost = try await sessionClient.getPost(
+                uri: atURI,
+                session: userContext.sessionData
+            )
             let cid = originalPost.cid
 
-            // Perform operation with proper CID
-            _ = try await operation(atURI, cid)
+            // Perform operation with proper CID and session
+            _ = try await operation(atURI, cid, userContext.sessionData)
 
             // Get the updated status
-            let post = try await atprotoClient.getPost(atURI)
+            let post = try await sessionClient.getPost(
+                uri: atURI,
+                session: userContext.sessionData
+            )
             let status = try await statusTranslator.translate(post)
 
             logger.info("Status \(action)d", metadata: ["id": "\(snowflakeID)"])
@@ -434,14 +529,10 @@ struct StatusRoutes: Sendable {
     private func handleGetInteractors(
         request: Request,
         context: some RequestContext,
+        userContext: UserContext,
         interactionType: String,
-        fetcher: (String) async throws -> Any
+        fetcher: (String, BlueskySessionData) async throws -> Any
     ) async throws -> Response {
-        // Verify authentication
-        guard let token = try await extractBearerToken(from: request) else {
-            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
-        }
-
         // Extract ID from path
         guard let idString = context.parameters.get("id", as: String.self),
               let snowflakeID = Int64(idString) else {
@@ -450,17 +541,14 @@ struct StatusRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
-
             // Map snowflake ID to AT URI
             guard let atURI = await idMapping.getATURI(forSnowflakeID: snowflakeID) else {
                 logger.warning("No AT URI found for snowflake ID", metadata: ["snowflake_id": "\(snowflakeID)"])
                 return try errorResponse(error: "not_found", description: "Status not found", status: .notFound)
             }
 
-            // Fetch interactors - the fetcher returns either ATProtoLikesResponse or ATProtoRepostsResponse
-            let result = try await fetcher(atURI)
+            // Fetch interactors with user's session - the fetcher returns either ATProtoLikesResponse or ATProtoRepostsResponse
+            let result = try await fetcher(atURI, userContext.sessionData)
 
             // Extract profiles and translate to Mastodon accounts
             var profiles: [ATProtoProfile] = []

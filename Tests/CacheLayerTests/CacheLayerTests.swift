@@ -1,9 +1,9 @@
-import XCTest
+import Testing
 @testable import CacheLayer
 
-final class CacheLayerTests: XCTestCase {
+@Suite struct CacheLayerTests {
     // Placeholder test file
-    func testPlaceholder() throws {
-        XCTAssertTrue(true)
+    @Test func placeholder() throws {
+        #expect(true)
     }
 }

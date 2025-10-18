@@ -1,11 +1,13 @@
+import Foundation
 import HummingbirdTesting
 import HTTPTypes
 import Logging
-import XCTest
+import Testing
 @testable import Hummingbird
 
 import ATProtoKit
 import Dependencies
+import DependenciesTestSupport
 @testable import Archaeopteryx
 @testable import ATProtoAdapter
 @testable import CacheLayer
@@ -15,16 +17,10 @@ import Dependencies
 @testable import MastodonModels
 
 /// Integration tests for Timeline API endpoints
-final class TimelineRoutesIntegrationTests: XCTestCase {
+@Suite(.dependencies) struct TimelineRoutesIntegrationTests {
 
-    override func setUp() async throws {
-        try await super.setUp()
-        await MockRequestExecutor.clearMocks()
-    }
-
-    override func tearDown() async throws {
-        await MockRequestExecutor.clearMocks()
-        try await super.tearDown()
+    init() async {
+       await MockRequestExecutor.clearMocks()
     }
 
     // MARK: - Helper
@@ -67,15 +63,10 @@ final class TimelineRoutesIntegrationTests: XCTestCase {
         )
         try await cache.set("session:\(did)", value: mockSession, ttl: 3600)
 
-        // ATProtoClient with mock
-        let mockExecutor = MockRequestExecutor()
-        let apiClientConfig = APIClientConfiguration(responseProvider: mockExecutor)
-        let atProtoClient = await ATProtoClient(
-            serviceURL: "https://bsky.social",
-            cache: cache,
-            apiClientConfiguration: apiClientConfig
+        // SessionScopedClient with mock (for multi-user support)
+        let sessionClient = await SessionScopedClient(
+            serviceURL: "https://bsky.social"
         )
-        await atProtoClient.setSession(mockSession)
 
         // Other services
         let oauthService = OAuthService(cache: cache)
@@ -92,24 +83,22 @@ final class TimelineRoutesIntegrationTests: XCTestCase {
         try await cache.set("at_uri_to_snowflake:\(testFeedURI)", value: testSnowflakeID, ttl: nil)
 
         // Build app
-        return try await withDependencies {
-            $0.atProtoClient = .live(client: atProtoClient)
-        } operation: {
-            let router = Router()
-            TimelineRoutes.addRoutes(
-                to: router,
-                oauthService: oauthService,
-                idMapping: idMapping,
-                statusTranslator: statusTranslator,
-                logger: logger
-            )
-            return Application(responder: router.buildResponder(), logger: logger)
-        }
+        let router = Router()
+        TimelineRoutes.addRoutes(
+            to: router,
+            oauthService: oauthService,
+            sessionClient: sessionClient,
+            idMapping: idMapping,
+            statusTranslator: statusTranslator,
+            logger: logger
+        )
+        return Application(responder: router.buildResponder(), logger: logger)
     }
 
     // MARK: - Tests
 
-    func testGetHomeTimeline_Success() async throws {
+    @Test func GetHomeTimeline_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getTimeline",
             statusCode: 200,
@@ -124,17 +113,18 @@ final class TimelineRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertGreaterThanOrEqual(statuses.count, 0)
+                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: try #require(response.body)))
+                #expect(statuses.count >= 0)
             }
         }
     }
 
-    func testGetPublicTimeline_Success() async throws {
+    @Test func GetPublicTimeline_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getTimeline",
             statusCode: 200,
@@ -149,17 +139,18 @@ final class TimelineRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertGreaterThanOrEqual(statuses.count, 0)
+                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: try #require(response.body)))
+                #expect(statuses.count >= 0)
             }
         }
     }
 
-    func testGetHashtagTimeline_Success() async throws {
+    @Test func GetHashtagTimeline_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.searchPosts",
             statusCode: 200,
@@ -174,17 +165,18 @@ final class TimelineRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertGreaterThanOrEqual(statuses.count, 0)
+                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: try #require(response.body)))
+                #expect(statuses.count >= 0)
             }
         }
     }
 
-    func testGetListTimeline_Success() async throws {
+    @Test func GetListTimeline_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getFeed",
             statusCode: 200,
@@ -199,13 +191,14 @@ final class TimelineRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertGreaterThanOrEqual(statuses.count, 0)
+                let statuses = try decoder.decode([MastodonStatus].self, from: Data(buffer: try #require(response.body)))
+                #expect(statuses.count >= 0)
             }
         }
     }
 }
+

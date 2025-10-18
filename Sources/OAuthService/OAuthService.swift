@@ -4,18 +4,22 @@ import MastodonModels
 import ATProtoAdapter
 import ArchaeopteryxCore
 import Crypto
+import ATProtoKit
 
 /// OAuth 2.0 service for Mastodon API compatibility
 public actor OAuthService {
     private let cache: any CacheService
+    private let atprotoServiceURL: String
 
     // Cache key prefixes
     private let appPrefix = "oauth:app:"
     private let codePrefix = "oauth:code:"
     private let tokenPrefix = "oauth:token:"
+    private let sessionPrefix = "session:"
 
-    public init(cache: any CacheService) {
+    public init(cache: any CacheService, atprotoServiceURL: String = "https://bsky.social") {
         self.cache = cache
+        self.atprotoServiceURL = atprotoServiceURL
     }
 
     // MARK: - Application Registration
@@ -92,8 +96,15 @@ public actor OAuthService {
             )
         }
 
-        // TODO: In production, verify credentials with Bluesky
-        // For now, we'll assume they're valid for testing
+        // Verify credentials with Bluesky (test connection)
+        let atproto = await ATProtoKit(pdsURL: atprotoServiceURL)
+        do {
+            // Test the credentials by creating a session
+            _ = try await atproto.createSession(with: handle, and: password)
+        } catch {
+            // Invalid credentials
+            throw ArchaeopteryxError.unauthorized
+        }
 
         // Generate authorization code
         let code = generateSecureToken()
@@ -152,13 +163,35 @@ public actor OAuthService {
         authCode.used = true
         try await cache.set("\(codePrefix)\(code)", value: authCode, ttl: 60)
 
-        // Create access token
-        let token = try await createAccessToken(
-            handle: authCode.handle,
-            scope: authCode.scope
-        )
+        // Create actual Bluesky session
+        let atproto = await ATProtoKit(pdsURL: atprotoServiceURL)
 
-        return token
+        do {
+            let session = try await atproto.createSession(with: authCode.handle, and: authCode.password)
+
+            // Create session data
+            let sessionData = BlueskySessionData(
+                accessToken: session.accessToken,
+                refreshToken: session.refreshToken,
+                did: session.did,
+                handle: session.handle,
+                email: session.email,
+                createdAt: Date()
+            )
+
+            // Create access token with session data
+            let token = try await createAccessToken(
+                did: session.did,
+                handle: session.handle,
+                sessionData: sessionData,
+                scope: authCode.scope
+            )
+
+            return token
+        } catch {
+            // Map ATProtoKit errors to our error types
+            throw ArchaeopteryxError.unauthorized
+        }
     }
 
     // MARK: - Password Grant
@@ -177,21 +210,41 @@ public actor OAuthService {
             throw ArchaeopteryxError.unauthorized
         }
 
-        // TODO: In production, create actual Bluesky session
-        // For now, we'll create a token for testing
+        // Create actual Bluesky session
+        let atproto = await ATProtoKit(pdsURL: atprotoServiceURL)
 
-        let token = try await createAccessToken(
-            handle: username,
-            scope: scope
-        )
+        do {
+            let session = try await atproto.createSession(with: username, and: password)
 
-        return token
+            // Create session data
+            let sessionData = BlueskySessionData(
+                accessToken: session.accessToken,
+                refreshToken: session.refreshToken,
+                did: session.did,
+                handle: session.handle,
+                email: session.email,
+                createdAt: Date()
+            )
+
+            // Create access token with session data
+            let token = try await createAccessToken(
+                did: session.did,
+                handle: session.handle,
+                sessionData: sessionData,
+                scope: scope
+            )
+
+            return token
+        } catch {
+            // Map ATProtoKit errors to our error types
+            throw ArchaeopteryxError.unauthorized
+        }
     }
 
     // MARK: - Token Management
 
-    /// Validate access token and return associated handle
-    public func validateToken(_ accessToken: String) async throws -> String {
+    /// Validate access token and return user context with session
+    public func validateToken(_ accessToken: String) async throws -> UserContext {
         guard let tokenData: TokenData = try await cache.get("\(tokenPrefix)\(accessToken)") else {
             throw ArchaeopteryxError.unauthorized
         }
@@ -209,7 +262,63 @@ public actor OAuthService {
             throw ArchaeopteryxError.unauthorized
         }
 
-        return tokenData.handle
+        return UserContext(
+            did: tokenData.did,
+            handle: tokenData.handle,
+            sessionData: tokenData.sessionData
+        )
+    }
+
+    /// Refresh an AT Protocol session using the refresh token
+    /// Returns updated UserContext with new access token
+    public func refreshSession(accessToken: String) async throws -> UserContext {
+        // Get current token data
+        guard let tokenData: TokenData = try await cache.get("\(tokenPrefix)\(accessToken)") else {
+            throw ArchaeopteryxError.unauthorized
+        }
+
+        // Use refresh token to get new session
+        let atproto = await ATProtoKit(pdsURL: atprotoServiceURL)
+
+        do {
+            // ATProtoKit refreshSession method
+            let refreshedSession = try await atproto.refreshSession(refreshToken: tokenData.sessionData.refreshToken)
+
+            // Create updated session data
+            let newSessionData = BlueskySessionData(
+                accessToken: refreshedSession.accessToken,
+                refreshToken: refreshedSession.refreshToken,
+                did: refreshedSession.did,
+                handle: refreshedSession.handle,
+                email: tokenData.sessionData.email,
+                createdAt: Date()
+            )
+
+            // Update token data in cache
+            let updatedTokenData = TokenData(
+                did: tokenData.did,
+                handle: tokenData.handle,
+                sessionData: newSessionData,
+                scope: tokenData.scope,
+                tokenType: tokenData.tokenType,
+                createdAt: tokenData.createdAt,
+                expiresIn: tokenData.expiresIn
+            )
+
+            try await cache.set("\(tokenPrefix)\(accessToken)", value: updatedTokenData, ttl: tokenData.expiresIn)
+
+            // Also update session by DID
+            try await cache.set("\(sessionPrefix)\(tokenData.did)", value: newSessionData, ttl: tokenData.expiresIn)
+
+            return UserContext(
+                did: tokenData.did,
+                handle: tokenData.handle,
+                sessionData: newSessionData
+            )
+        } catch {
+            // If refresh fails, the session is invalid
+            throw ArchaeopteryxError.unauthorized
+        }
     }
 
     /// Revoke an access token
@@ -248,7 +357,12 @@ public actor OAuthService {
     // MARK: - Private Helpers
 
     /// Create an access token for a user
-    private func createAccessToken(handle: String, scope: String) async throws -> OAuthToken {
+    private func createAccessToken(
+        did: String,
+        handle: String,
+        sessionData: BlueskySessionData,
+        scope: String
+    ) async throws -> OAuthToken {
         let accessToken = generateSecureToken()
         let createdAt = Int(Date().timeIntervalSince1970)
         let expiresIn = 7 * 24 * 60 * 60 // 7 days
@@ -261,9 +375,11 @@ public actor OAuthService {
             expiresIn: expiresIn
         )
 
-        // Store token data in cache
+        // Store token data in cache (Valkey/Redis)
         let tokenData = TokenData(
+            did: did,
             handle: handle,
+            sessionData: sessionData,
             scope: scope,
             tokenType: "Bearer",
             createdAt: createdAt,
@@ -271,6 +387,9 @@ public actor OAuthService {
         )
 
         try await cache.set("\(tokenPrefix)\(accessToken)", value: tokenData, ttl: expiresIn)
+
+        // Also store session by DID for direct lookup
+        try await cache.set("\(sessionPrefix)\(did)", value: sessionData, ttl: expiresIn)
 
         return token
     }
@@ -288,11 +407,27 @@ public actor OAuthService {
 
 // MARK: - Internal Models
 
-/// Internal token data stored in cache
-private struct TokenData: Codable, Sendable {
+/// Internal token data stored in cache (Valkey/Redis)
+/// Made internal (not private) for testing purposes
+struct TokenData: Codable, Sendable {
+    /// User's AT Protocol DID
+    let did: String
+
+    /// User's Bluesky handle
     let handle: String
+
+    /// Bluesky session data for API calls
+    let sessionData: BlueskySessionData
+
+    /// OAuth scope
     let scope: String
+
+    /// Token type (always "Bearer")
     let tokenType: String
+
+    /// When token was created (Unix timestamp)
     let createdAt: Int
+
+    /// Token expiration in seconds
     let expiresIn: Int
 }

@@ -1,35 +1,36 @@
-import XCTest
+import Testing
+import Foundation
 @testable import IDMapping
 
-final class SnowflakeIDGeneratorTests: XCTestCase {
+@Suite struct SnowflakeIDGeneratorTests {
 
-    func testGenerateUniqueIDs() async throws {
+    @Test func generateUniqueIDs() async throws {
         // Test that we can generate IDs
         let generator = SnowflakeIDGenerator()
         let id1 = await generator.generate()
         let id2 = await generator.generate()
 
         // IDs should be unique
-        XCTAssertNotEqual(id1, id2)
+        #expect(id1 != id2)
 
         // IDs should be positive
-        XCTAssertGreaterThan(id1, 0)
-        XCTAssertGreaterThan(id2, 0)
+        #expect(id1 > 0)
+        #expect(id2 > 0)
     }
 
-    func testIDsAreMonotonicallyIncreasing() async throws {
+    @Test func idsAreMonotonicallyIncreasing() async throws {
         // Snowflake IDs should increase over time
         let generator = SnowflakeIDGenerator()
         var previousID: Int64 = 0
 
         for _ in 0..<100 {
             let id = await generator.generate()
-            XCTAssertGreaterThan(id, previousID)
+            #expect(id > previousID)
             previousID = id
         }
     }
 
-    func testExtractTimestamp() async throws {
+    @Test func extractTimestamp() async throws {
         // We should be able to extract the timestamp from a Snowflake ID
         let generator = SnowflakeIDGenerator()
         let beforeTime = floor(Date().timeIntervalSince1970)
@@ -39,20 +40,20 @@ final class SnowflakeIDGeneratorTests: XCTestCase {
         let extractedTime = await generator.extractTimestamp(from: id)
 
         // Extracted time should be between before and after (within tolerance due to millisecond precision)
-        XCTAssertGreaterThanOrEqual(extractedTime, beforeTime - 0.01)
-        XCTAssertLessThanOrEqual(extractedTime, afterTime + 0.01)
+        #expect(extractedTime >= beforeTime - 0.01)
+        #expect(extractedTime <= afterTime + 0.01)
     }
 
-    func testCustomEpoch() async throws {
+    @Test func customEpoch() async throws {
         // Test that we can use a custom epoch (like Twitter's 2010-11-04)
         let twitterEpoch: Int64 = 1288834974657
         let generator = SnowflakeIDGenerator(epoch: twitterEpoch)
 
         let id = await generator.generate()
-        XCTAssertGreaterThan(id, 0)
+        #expect(id > 0)
     }
 
-    func testSequenceNumber() async throws {
+    @Test func sequenceNumber() async throws {
         // When generating IDs in the same millisecond, sequence number should increment
         let generator = SnowflakeIDGenerator()
 
@@ -64,10 +65,10 @@ final class SnowflakeIDGeneratorTests: XCTestCase {
 
         // All IDs should be unique
         let uniqueIDs = Set(ids)
-        XCTAssertEqual(uniqueIDs.count, ids.count)
+        #expect(uniqueIDs.count == ids.count)
     }
 
-    func testThreadSafety() async throws {
+    @Test func threadSafety() async throws {
         // Test that generator works correctly with concurrent access
         let generator = SnowflakeIDGenerator()
 
@@ -84,7 +85,7 @@ final class SnowflakeIDGeneratorTests: XCTestCase {
             }
 
             // All IDs should be unique
-            XCTAssertEqual(ids.count, 100)
+            #expect(ids.count == 100)
         }
     }
 }

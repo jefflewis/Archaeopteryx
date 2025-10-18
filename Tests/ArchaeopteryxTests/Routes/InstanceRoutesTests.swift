@@ -1,11 +1,12 @@
-import XCTest
+import Foundation
+import Testing
 @testable import Archaeopteryx
 @testable import MastodonModels
 
-final class InstanceRoutesTests: XCTestCase {
+@Suite struct InstanceRoutesTests {
     // MARK: - Instance Model Tests
 
-    func testInstance_CanBeCreated() {
+    @Test func Instance_CanBeCreated() {
         let instance = Instance(
             uri: "bsky.example.com",
             title: "Test Instance",
@@ -15,14 +16,14 @@ final class InstanceRoutesTests: XCTestCase {
             version: "4.0.0 (compatible; Archaeopteryx 0.1.0)"
         )
 
-        XCTAssertEqual(instance.uri, "bsky.example.com")
-        XCTAssertEqual(instance.title, "Test Instance")
-        XCTAssertEqual(instance.shortDescription, "A test instance")
-        XCTAssertEqual(instance.email, "admin@example.com")
-        XCTAssertTrue(instance.version.contains("compatible"))
+        #expect(instance.uri == "bsky.example.com")
+        #expect(instance.title == "Test Instance")
+        #expect(instance.shortDescription == "A test instance")
+        #expect(instance.email == "admin@example.com")
+        #expect(instance.version.contains("compatible"))
     }
 
-    func testInstance_HasDefaultConfiguration() {
+    @Test func Instance_HasDefaultConfiguration() {
         let instance = Instance(
             uri: "bsky.example.com",
             title: "Test",
@@ -33,12 +34,12 @@ final class InstanceRoutesTests: XCTestCase {
         )
 
         // Should have default configuration values
-        XCTAssertEqual(instance.configuration.statuses.maxCharacters, 300)  // Bluesky limit
-        XCTAssertEqual(instance.configuration.statuses.maxMediaAttachments, 4)
-        XCTAssertEqual(instance.configuration.polls.maxOptions, 4)
+        #expect(instance.configuration.statuses.maxCharacters == 300)  // Bluesky limit
+        #expect(instance.configuration.statuses.maxMediaAttachments == 4)
+        #expect(instance.configuration.polls.maxOptions == 4)
     }
 
-    func testInstance_EncodesWithSnakeCase() throws {
+    @Test func Instance_EncodesWithSnakeCase() throws {
         let instance = Instance(
             uri: "test.com",
             title: "Test",
@@ -57,12 +58,12 @@ final class InstanceRoutesTests: XCTestCase {
         let json = String(data: data, encoding: .utf8)!
 
         // Verify snake_case keys
-        XCTAssertTrue(json.contains("short_description"))
-        XCTAssertTrue(json.contains("approval_required"))
-        XCTAssertTrue(json.contains("invites_enabled"))
+        #expect(json.contains("short_description"))
+        #expect(json.contains("approval_required"))
+        #expect(json.contains("invites_enabled"))
     }
 
-    func testInstance_DecodesCorrectly() throws {
+    @Test func Instance_DecodesCorrectly() throws {
         let original = Instance(
             uri: "test.com",
             title: "Test",
@@ -82,44 +83,44 @@ final class InstanceRoutesTests: XCTestCase {
         let decoded = try JSONDecoder().decode(Instance.self, from: data)
 
         // Verify round-trip preserves values
-        XCTAssertEqual(decoded.uri, "test.com")
-        XCTAssertEqual(decoded.shortDescription, "Short")
-        XCTAssertEqual(decoded.approvalRequired, true)
-        XCTAssertEqual(decoded.invitesEnabled, false)
+        #expect(decoded.uri == "test.com")
+        #expect(decoded.shortDescription == "Short")
+        #expect(decoded.approvalRequired == true)
+        #expect(decoded.invitesEnabled == false)
     }
 
-    func testInstanceConfiguration_HasCorrectDefaults() {
+    @Test func InstanceConfiguration_HasCorrectDefaults() {
         let config = InstanceConfiguration()
 
         // Status limits match Bluesky
-        XCTAssertEqual(config.statuses.maxCharacters, 300)
-        XCTAssertEqual(config.statuses.maxMediaAttachments, 4)
+        #expect(config.statuses.maxCharacters == 300)
+        #expect(config.statuses.maxMediaAttachments == 4)
 
         // Media limits are reasonable
-        XCTAssertEqual(config.mediaAttachments.imageSizeLimit, 10_485_760)  // 10 MB
-        XCTAssertEqual(config.mediaAttachments.videoSizeLimit, 41_943_040)  // 40 MB
+        #expect(config.mediaAttachments.imageSizeLimit == 10_485_760)  // 10 MB
+        #expect(config.mediaAttachments.videoSizeLimit == 41_943_040)  // 40 MB
 
         // Poll limits
-        XCTAssertEqual(config.polls.maxOptions, 4)
-        XCTAssertEqual(config.polls.maxCharactersPerOption, 50)
+        #expect(config.polls.maxOptions == 4)
+        #expect(config.polls.maxCharactersPerOption == 50)
     }
 
-    func testInstanceStats_DefaultsToZero() {
+    @Test func InstanceStats_DefaultsToZero() {
         let stats = InstanceStats()
 
-        XCTAssertEqual(stats.userCount, 0)
-        XCTAssertEqual(stats.statusCount, 0)
-        XCTAssertEqual(stats.domainCount, 0)
+        #expect(stats.userCount == 0)
+        #expect(stats.statusCount == 0)
+        #expect(stats.domainCount == 0)
     }
 
-    func testInstanceRule_CanBeCreated() {
+    @Test func InstanceRule_CanBeCreated() {
         let rule = InstanceRule(id: "1", text: "Be kind")
 
-        XCTAssertEqual(rule.id, "1")
-        XCTAssertEqual(rule.text, "Be kind")
+        #expect(rule.id == "1")
+        #expect(rule.text == "Be kind")
     }
 
-    func testInstance_SupportsEquatable() {
+    @Test func Instance_SupportsEquatable() {
         let instance1 = Instance(
             uri: "test.com",
             title: "Test",
@@ -138,10 +139,10 @@ final class InstanceRoutesTests: XCTestCase {
             version: "1.0.0"
         )
 
-        XCTAssertEqual(instance1, instance2)
+        #expect(instance1 == instance2)
     }
 
-    func testInstance_DisablesRegistrationsByDefault() {
+    @Test func Instance_DisablesRegistrationsByDefault() {
         let instance = Instance(
             uri: "test.com",
             title: "Test",
@@ -152,8 +153,9 @@ final class InstanceRoutesTests: XCTestCase {
         )
 
         // Registrations should be disabled for a Bluesky bridge
-        XCTAssertFalse(instance.registrations)
-        XCTAssertTrue(instance.approvalRequired)
-        XCTAssertFalse(instance.invitesEnabled)
+        #expect(!(instance.registrations))
+        #expect(instance.approvalRequired)
+        #expect(!(instance.invitesEnabled))
     }
 }
+

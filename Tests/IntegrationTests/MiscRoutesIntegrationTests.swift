@@ -1,11 +1,13 @@
+import Foundation
 import HummingbirdTesting
 import HTTPTypes
 import Logging
-import XCTest
+import Testing
 @testable import Hummingbird
 
 import ATProtoKit
 import Dependencies
+import DependenciesTestSupport
 @testable import Archaeopteryx
 @testable import ATProtoAdapter
 @testable import ArchaeopteryxCore
@@ -16,16 +18,10 @@ import Dependencies
 @testable import MastodonModels
 
 /// Integration tests for Search, OAuth, Media, List, and Instance endpoints
-final class MiscRoutesIntegrationTests: XCTestCase {
+@Suite(.dependencies) struct MiscRoutesIntegrationTests {
 
-    override func setUp() async throws {
-        try await super.setUp()
-        await MockRequestExecutor.clearMocks()
-    }
-
-    override func tearDown() async throws {
-        await MockRequestExecutor.clearMocks()
-        try await super.tearDown()
+    init() async {
+       await MockRequestExecutor.clearMocks()
     }
 
     // MARK: - Helper
@@ -80,15 +76,10 @@ final class MiscRoutesIntegrationTests: XCTestCase {
         )
         try await cache.set("session:\(did)", value: mockSession, ttl: 3600)
 
-        // ATProtoClient with mock
-        let mockExecutor = MockRequestExecutor()
-        let apiClientConfig = APIClientConfiguration(responseProvider: mockExecutor)
-        let atProtoClient = await ATProtoClient(
-            serviceURL: "https://bsky.social",
-            cache: cache,
-            apiClientConfiguration: apiClientConfig
+        // SessionScopedClient with mock (for multi-user support)
+        let sessionClient = await SessionScopedClient(
+            serviceURL: "https://bsky.social"
         )
-        await atProtoClient.setSession(mockSession)
 
         // Other services
         let oauthService = OAuthService(cache: cache)
@@ -100,25 +91,22 @@ final class MiscRoutesIntegrationTests: XCTestCase {
         let config = ArchaeopteryxConfiguration.default
 
         // Build app with all routes
-        return try await withDependencies {
-            $0.atProtoClient = .live(client: atProtoClient)
-        } operation: {
-            let router = Router()
+        let router = Router()
 
-            // Add all route types
-            SearchRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, profileTranslator: profileTranslator, cache: cache)
-            OAuthRoutes.addRoutes(to: router, oauthService: oauthService, logger: logger)
-            MediaRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, cache: cache)
-            ListRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, statusTranslator: statusTranslator, cache: cache)
-            InstanceRoutes.addRoutes(to: router, logger: logger, config: config)
+        // Add all route types
+        SearchRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, profileTranslator: profileTranslator, cache: cache)
+        OAuthRoutes.addRoutes(to: router, oauthService: oauthService, logger: logger)
+        MediaRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, cache: cache)
+        ListRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, sessionClient: sessionClient, idMapping: idMapping, statusTranslator: statusTranslator, cache: cache)
+        InstanceRoutes.addRoutes(to: router, logger: logger, config: config)
 
-            return Application(responder: router.buildResponder(), logger: logger)
-        }
+        return Application(responder: router.buildResponder(), logger: logger)
     }
 
     // MARK: - Search Tests
 
-    func testSearch_Success() async throws {
+    @Test func Search_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.actor.searchActors",
             statusCode: 200,
@@ -138,16 +126,16 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let body = try XCTUnwrap(response.body)
-                XCTAssertGreaterThan(body.readableBytes, 0)
+                #expect(response.status == .ok)
+                let body = try try #require(response.body)
+                #expect(body.readableBytes > 0)
             }
         }
     }
 
     // MARK: - OAuth Tests
 
-    func testCreateApp_Success() async throws {
+    @Test func CreateApp_Success() async throws {
         let app = try await buildApp()
 
         try await app.test(.router) { client in
@@ -158,14 +146,15 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 headers: [.contentType: "application/json"],
                 body: ByteBuffer(string: body)
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let body = try XCTUnwrap(response.body)
-                XCTAssertGreaterThan(body.readableBytes, 0)
+                #expect(response.status == .ok)
+                let body = try try #require(response.body)
+                #expect(body.readableBytes > 0)
             }
         }
     }
 
-    func testOAuthToken_Success() async throws {
+    @Test func OAuthToken_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.server.createSession",
             statusCode: 200,
@@ -182,14 +171,14 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 headers: [.contentType: "application/json"],
                 body: ByteBuffer(string: body)
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let body = try XCTUnwrap(response.body)
-                XCTAssertGreaterThan(body.readableBytes, 0)
+                #expect(response.status == .ok)
+                let body = try try #require(response.body)
+                #expect(body.readableBytes > 0)
             }
         }
     }
 
-    func testOAuthRevoke_Success() async throws {
+    @Test func OAuthRevoke_Success() async throws {
         let app = try await buildApp()
 
         try await app.test(.router) { client in
@@ -200,14 +189,15 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 headers: [.contentType: "application/json"],
                 body: ByteBuffer(string: body)
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
             }
         }
     }
 
     // MARK: - Media Tests
 
-    func testUploadMedia_Success() async throws {
+    @Test func UploadMedia_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "com.atproto.repo.uploadBlob",
             statusCode: 200,
@@ -247,14 +237,15 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                     .internalServerError,
                     .init(code: 422, reasonPhrase: "Unprocessable Entity")
                 ]
-                XCTAssertTrue(acceptableStatuses.contains(response.status), "Got status: \(response.status)")
+                #expect(acceptableStatuses.contains(response.status), "Got status: \(response.status)")
             }
         }
     }
 
     // MARK: - List Tests
 
-    func testGetLists_Success() async throws {
+    @Test func GetLists_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.graph.getLists",
             statusCode: 200,
@@ -269,14 +260,15 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let body = try XCTUnwrap(response.body)
-                XCTAssertGreaterThan(body.readableBytes, 0)
+                #expect(response.status == .ok)
+                let body = try try #require(response.body)
+                #expect(body.readableBytes > 0)
             }
         }
     }
 
-    func testGetList_Success() async throws {
+    @Test func GetList_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.graph.getList",
             statusCode: 200,
@@ -291,16 +283,16 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let body = try XCTUnwrap(response.body)
-                XCTAssertGreaterThan(body.readableBytes, 0)
+                #expect(response.status == .ok)
+                let body = try try #require(response.body)
+                #expect(body.readableBytes > 0)
             }
         }
     }
 
     // MARK: - Instance Tests
 
-    func testGetInstance_Success() async throws {
+    @Test func GetInstance_Success() async throws {
         let app = try await buildApp()
 
         try await app.test(.router) { client in
@@ -308,16 +300,16 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 uri: "/api/v1/instance",
                 method: .get
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 // Don't use keyDecodingStrategy - Instance has explicit CodingKeys
-                let instance = try decoder.decode(Instance.self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertEqual(instance.title, "Archaeopteryx")
+                let instance = try decoder.decode(Instance.self, from: Data(buffer: try #require(response.body)))
+                #expect(instance.title == "Archaeopteryx")
             }
         }
     }
 
-    func testGetInstanceV2_Success() async throws {
+    @Test func GetInstanceV2_Success() async throws {
         let app = try await buildApp()
 
         try await app.test(.router) { client in
@@ -325,12 +317,13 @@ final class MiscRoutesIntegrationTests: XCTestCase {
                 uri: "/api/v2/instance",
                 method: .get
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 // Don't use keyDecodingStrategy - Instance has explicit CodingKeys
-                let instance = try decoder.decode(Instance.self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertEqual(instance.title, "Archaeopteryx")
+                let instance = try decoder.decode(Instance.self, from: Data(buffer: try #require(response.body)))
+                #expect(instance.title == "Archaeopteryx")
             }
         }
     }
 }
+

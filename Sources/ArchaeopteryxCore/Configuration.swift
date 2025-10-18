@@ -51,6 +51,9 @@ public struct ServerConfiguration: Codable, Sendable {
 }
 
 public struct ValkeyConfiguration: Codable, Sendable {
+    /// Whether Valkey/Redis is enabled (false uses in-memory cache)
+    public var enabled: Bool
+
     /// Valkey/Redis host
     public var host: String
 
@@ -64,11 +67,13 @@ public struct ValkeyConfiguration: Codable, Sendable {
     public var database: Int
 
     public init(
+        enabled: Bool = false,
         host: String = "localhost",
         port: Int = 6379,
         password: String? = nil,
         database: Int = 0
     ) {
+        self.enabled = enabled
         self.host = host
         self.port = port
         self.password = password
@@ -135,6 +140,11 @@ extension ArchaeopteryxConfiguration {
 
         if let hostname = ProcessInfo.processInfo.environment["HOSTNAME"] {
             config.server.hostname = hostname
+        }
+
+        if let valkeyEnabled = ProcessInfo.processInfo.environment["VALKEY_ENABLED"],
+           valkeyEnabled.lowercased() == "true" {
+            config.valkey.enabled = true
         }
 
         if let valkeyHost = ProcessInfo.processInfo.environment["VALKEY_HOST"] {

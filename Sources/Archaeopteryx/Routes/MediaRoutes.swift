@@ -72,8 +72,8 @@ struct MediaRoutes {
         let token = String(authHeader.dropFirst(7))
 
         do {
-            // Validate token and get DID
-            let did = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Get content type
             guard let contentType = request.headers[.contentType] else {
@@ -133,7 +133,7 @@ struct MediaRoutes {
                 mimeType: blobRef.mimeType,
                 size: blobRef.size,
                 description: description,
-                ownerDID: did,
+                ownerDID: userContext.did,
                 createdAt: Date()
             )
 
@@ -141,7 +141,7 @@ struct MediaRoutes {
             try await cache.set(cacheKey, value: metadata, ttl: 24 * 60 * 60) // 24 hour TTL
 
             // Construct media URL (using CID for now)
-            let mediaURL = "https://cdn.bsky.app/img/feed_thumbnail/plain/\(did)/\(blobRef.cid)@jpeg"
+            let mediaURL = "https://cdn.bsky.app/img/feed_thumbnail/plain/\(userContext.did)/\(blobRef.cid)@jpeg"
 
             // Determine media type
             let mediaType: MastodonModels.MediaType = contentType.starts(with: "video/") ? .video :
@@ -238,8 +238,8 @@ struct MediaRoutes {
         let token = String(authHeader.dropFirst(7))
 
         do {
-            // Validate token and get DID
-            let did = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Retrieve existing metadata
             let cacheKey = "media:\(mediaID)"
@@ -248,7 +248,7 @@ struct MediaRoutes {
             }
 
             // Verify ownership
-            guard metadata.ownerDID == did else {
+            guard metadata.ownerDID == userContext.did else {
                 return try errorResponse(error: "forbidden", description: "You don't own this media attachment", status: .forbidden)
             }
 

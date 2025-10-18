@@ -7,7 +7,7 @@ import IDMapping
 import OAuthService
 import TranslationLayer
 import CacheLayer
-import Dependencies
+import ArchaeopteryxCore
 
 // MARK: - List Routes
 
@@ -18,7 +18,7 @@ import Dependencies
 /// Bluesky custom feeds to Mastodon lists (read-only).
 struct ListRoutes {
     let logger: Logger
-    @Dependency(\.atProtoClient) var atprotoClient
+    let sessionClient: SessionScopedClient
     let oauthService: OAuthService
     let idMapping: IDMappingService
     let statusTranslator: StatusTranslator
@@ -29,12 +29,14 @@ struct ListRoutes {
         to router: Router<some RequestContext>,
         logger: Logger,
         oauthService: OAuthService,
+        sessionClient: SessionScopedClient,
         idMapping: IDMappingService,
         statusTranslator: StatusTranslator,
         cache: CacheService
     ) {
         let routes = ListRoutes(
             logger: logger,
+            sessionClient: sessionClient,
             oauthService: oauthService,
             idMapping: idMapping,
             statusTranslator: statusTranslator,

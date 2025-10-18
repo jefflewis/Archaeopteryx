@@ -11,8 +11,10 @@ This document provides architectural guidelines, coding practices, and high-leve
 **Key Technologies**:
 - **Language**: Swift 6.0
 - **Web Framework**: Hummingbird 2.0
-- **Cache**: RediStack (Valkey/Redis)
+- **Cache**: valkey-swift (official Valkey client)
+- **Service Lifecycle**: swift-service-lifecycle
 - **AT Protocol SDK**: ATProtoKit
+- **Observability**: swift-otel (OpenTelemetry)
 - **Methodology**: Test-Driven Development (TDD)
 
 ---

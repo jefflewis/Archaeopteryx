@@ -1,9 +1,9 @@
-import XCTest
+import Testing
 @testable import Archaeopteryx
 
-final class ArchaeopteryxTests: XCTestCase {
-    func testExample() throws {
+@Suite struct ArchaeopteryxTests {
+    @Test func example() throws {
         // Basic test placeholder
-        XCTAssertTrue(true)
+        #expect(true)
     }
 }

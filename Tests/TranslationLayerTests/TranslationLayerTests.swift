@@ -1,9 +1,9 @@
-import XCTest
+import Testing
 @testable import TranslationLayer
 
-final class TranslationLayerTests: XCTestCase {
+@Suite struct TranslationLayerTests {
     // Placeholder test file
-    func testPlaceholder() throws {
-        XCTAssertTrue(true)
+    @Test func placeholder() throws {
+        #expect(true)
     }
 }

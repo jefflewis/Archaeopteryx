@@ -1,54 +1,47 @@
-import XCTest
+import Testing
+import Foundation
 @testable import Archaeopteryx
 @testable import MastodonModels
 @testable import IDMapping
 @testable import CacheLayer
 
-final class ListRoutesTests: XCTestCase {
+@Suite struct ListRoutesTests {
     var cache: InMemoryCache!
     var idMapping: IDMappingService!
     var generator: SnowflakeIDGenerator!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        cache = InMemoryCache()
+    init() async {
+       cache = InMemoryCache()
         generator = SnowflakeIDGenerator()
         idMapping = IDMappingService(cache: cache, generator: generator)
     }
 
-    override func tearDown() async throws {
-        cache = nil
-        idMapping = nil
-        generator = nil
-        try await super.tearDown()
-    }
-
     // MARK: - MastodonList Model Tests
 
-    func testMastodonList_CanBeCreated() {
+    @Test func MastodonList_CanBeCreated() {
         let list = MastodonList(
             id: "123",
             title: "Friends"
         )
 
-        XCTAssertEqual(list.id, "123")
-        XCTAssertEqual(list.title, "Friends")
-        XCTAssertEqual(list.repliesPolicy, .followed)
+        #expect(list.id == "123")
+        #expect(list.title == "Friends")
+        #expect(list.repliesPolicy == .followed)
     }
 
-    func testMastodonList_WithAllFields() {
+    @Test func MastodonList_WithAllFields() {
         let list = MastodonList(
             id: "456",
             title: "Tech News",
             repliesPolicy: .list
         )
 
-        XCTAssertEqual(list.id, "456")
-        XCTAssertEqual(list.title, "Tech News")
-        XCTAssertEqual(list.repliesPolicy, .list)
+        #expect(list.id == "456")
+        #expect(list.title == "Tech News")
+        #expect(list.repliesPolicy == .list)
     }
 
-    func testMastodonList_EncodesWithSnakeCase() throws {
+    @Test func MastodonList_EncodesWithSnakeCase() throws {
         let list = MastodonList(
             id: "789",
             title: "Test List",
@@ -61,10 +54,10 @@ final class ListRoutesTests: XCTestCase {
         let json = String(data: data, encoding: .utf8)!
 
         // Verify snake_case keys
-        XCTAssertTrue(json.contains("replies_policy"))
+        #expect(json.contains("replies_policy"))
     }
 
-    func testMastodonList_DecodesCorrectly() throws {
+    @Test func MastodonList_DecodesCorrectly() throws {
         let original = MastodonList(
             id: "101",
             title: "Favorites"
@@ -73,28 +66,28 @@ final class ListRoutesTests: XCTestCase {
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(MastodonList.self, from: data)
 
-        XCTAssertEqual(decoded.id, "101")
-        XCTAssertEqual(decoded.title, "Favorites")
+        #expect(decoded.id == "101")
+        #expect(decoded.title == "Favorites")
     }
 
-    func testMastodonList_SupportsEquatable() {
+    @Test func MastodonList_SupportsEquatable() {
         let list1 = MastodonList(id: "1", title: "List A")
         let list2 = MastodonList(id: "1", title: "List A")
         let list3 = MastodonList(id: "2", title: "List B")
 
-        XCTAssertEqual(list1, list2)
-        XCTAssertNotEqual(list1, list3)
+        #expect(list1 == list2)
+        #expect(list1 != list3)
     }
 
-    func testMastodonListRepliesPolicy_AllValues() {
-        XCTAssertEqual(MastodonListRepliesPolicy.followed.rawValue, "followed")
-        XCTAssertEqual(MastodonListRepliesPolicy.list.rawValue, "list")
-        XCTAssertEqual(MastodonListRepliesPolicy.none.rawValue, "none")
+    @Test func MastodonListRepliesPolicy_AllValues() {
+        #expect(MastodonListRepliesPolicy.followed.rawValue == "followed")
+        #expect(MastodonListRepliesPolicy.list.rawValue == "list")
+        #expect(MastodonListRepliesPolicy.none.rawValue == "none")
     }
 
     // MARK: - List Routes Integration Tests
 
-    func testListRoutes_PlaceholderForImplementation() {
+    @Test func ListRoutes_PlaceholderForImplementation() {
         // This test ensures the List routes file can be created
         // Full HTTP integration tests will be added when we implement the routes
         //
@@ -113,6 +106,7 @@ final class ListRoutesTests: XCTestCase {
         // - Get single list with invalid ID returns 404
         // - Get list accounts returns empty array
         // - List timeline works like regular timeline
-        XCTAssertTrue(true, "List routes need HTTP integration tests")
+        #expect(true, "List routes need HTTP integration tests")
     }
 }
+

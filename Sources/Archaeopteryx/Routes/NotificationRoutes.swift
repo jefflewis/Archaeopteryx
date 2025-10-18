@@ -7,12 +7,12 @@ import ATProtoAdapter
 import IDMapping
 import TranslationLayer
 import MastodonModels
-import Dependencies
+import ArchaeopteryxCore
 
 /// Routes for notification operations
 struct NotificationRoutes: Sendable {
     let oauthService: OAuthService
-    @Dependency(\.atProtoClient) var atprotoClient
+    let sessionClient: SessionScopedClient
     let idMapping: IDMappingService
     let notificationTranslator: NotificationTranslator
     let logger: Logger
@@ -20,12 +20,14 @@ struct NotificationRoutes: Sendable {
     static func addRoutes(
         to router: Router<some RequestContext>,
         oauthService: OAuthService,
+        sessionClient: SessionScopedClient,
         idMapping: IDMappingService,
         notificationTranslator: NotificationTranslator,
         logger: Logger
     ) {
         let routes = NotificationRoutes(
             oauthService: oauthService,
+            sessionClient: sessionClient,
             idMapping: idMapping,
             notificationTranslator: notificationTranslator,
             logger: logger
@@ -62,16 +64,20 @@ struct NotificationRoutes: Sendable {
         let maxID = queryItems["max_id"]
 
         do {
-            // Validate token and get user DID
-            let userDID = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             logger.info("Getting notifications", metadata: [
-                "user": "\(userDID)",
+                "user": "\(userContext.did)",
                 "limit": "\(limit)"
             ])
 
-            // Get notifications from AT Protocol
-            let notificationsResponse = try await atprotoClient.getNotifications(limit, maxID)
+            // Get notifications from AT Protocol with user's session
+            let notificationsResponse = try await sessionClient.getNotifications(
+                limit: limit,
+                cursor: maxID,
+                session: userContext.sessionData
+            )
 
             // Translate notifications to Mastodon format
             let notifications = try await withThrowingTaskGroup(of: MastodonNotification?.self) { group in
@@ -119,13 +125,17 @@ struct NotificationRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            let userDID = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             logger.info("Getting single notification", metadata: ["id": "\(notificationSnowflakeID)"])
 
             // Fetch recent notifications and find the one matching this ID
-            let notificationsResponse = try await atprotoClient.getNotifications(50, nil)
+            let notificationsResponse = try await sessionClient.getNotifications(
+                limit: 50,
+                cursor: nil,
+                session: userContext.sessionData
+            )
 
             // Translate notifications and find the matching one
             for notification in notificationsResponse.notifications {
@@ -200,13 +210,13 @@ struct NotificationRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             logger.info("Clearing all notifications")
 
             // Mark all notifications as seen/read
-            try await atprotoClient.updateSeenNotifications()
+            try await sessionClient.updateSeenNotifications(session: userContext.sessionData)
 
             // Return empty object
             let emptyObject: [String: String] = [:]
@@ -233,7 +243,7 @@ struct NotificationRoutes: Sendable {
         }
 
         do {
-            // Validate token
+            // Validate token and get user context
             _ = try await oauthService.validateToken(token)
 
             logger.info("Dismissing notification", metadata: ["id": "\(notificationSnowflakeID)"])

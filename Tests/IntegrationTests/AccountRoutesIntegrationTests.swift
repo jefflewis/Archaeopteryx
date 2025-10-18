@@ -1,11 +1,13 @@
+import Foundation
 import HummingbirdTesting
 import HTTPTypes
 import Logging
-import XCTest
+import Testing
 @testable import Hummingbird
 
 import ATProtoKit
 import Dependencies
+import DependenciesTestSupport
 @testable import Archaeopteryx
 @testable import ATProtoAdapter
 @testable import CacheLayer
@@ -15,16 +17,10 @@ import Dependencies
 @testable import MastodonModels
 
 /// Integration tests for Account API endpoints
-final class AccountRoutesIntegrationTests: XCTestCase {
+@Suite(.dependencies) struct AccountRoutesIntegrationTests {
 
-    override func setUp() async throws {
-        try await super.setUp()
-        await MockRequestExecutor.clearMocks()
-    }
-
-    override func tearDown() async throws {
-        await MockRequestExecutor.clearMocks()
-        try await super.tearDown()
+    init() async {
+       await MockRequestExecutor.clearMocks()
     }
 
     // MARK: - Helper
@@ -67,15 +63,10 @@ final class AccountRoutesIntegrationTests: XCTestCase {
         )
         try await cache.set("session:\(did)", value: mockSession, ttl: 3600)
 
-        // ATProtoClient with mock
-        let mockExecutor = MockRequestExecutor()
-        let apiClientConfig = APIClientConfiguration(responseProvider: mockExecutor)
-        let atProtoClient = await ATProtoClient(
-            serviceURL: "https://bsky.social",
-            cache: cache,
-            apiClientConfiguration: apiClientConfig
+        // SessionScopedClient with mock (for multi-user support)
+        let sessionClient = await SessionScopedClient(
+            serviceURL: "https://bsky.social"
         )
-        await atProtoClient.setSession(mockSession)
 
         // Other services
         let oauthService = OAuthService(cache: cache)
@@ -90,19 +81,16 @@ final class AccountRoutesIntegrationTests: XCTestCase {
         try await cache.set("did_to_snowflake:\(did)", value: testSnowflakeID, ttl: nil)
 
         // Build app
-        return try await withDependencies {
-            $0.atProtoClient = .live(client: atProtoClient)
-        } operation: {
-            let router = Router()
-            AccountRoutes.addRoutes(
-                to: router,
-                oauthService: oauthService,
-                idMapping: idMapping,
-                translator: profileTranslator,
-                logger: logger
-            )
-            return Application(responder: router.buildResponder(), logger: logger)
-        }
+        let router = Router()
+        AccountRoutes.addRoutes(
+            to: router,
+            oauthService: oauthService,
+            sessionClient: sessionClient,
+            idMapping: idMapping,
+            translator: profileTranslator,
+            logger: logger
+        )
+        return Application(responder: router.buildResponder(), logger: logger)
     }
 
     static func decodeAccount(from body: ByteBuffer) throws -> MastodonAccount {
@@ -114,7 +102,8 @@ final class AccountRoutesIntegrationTests: XCTestCase {
 
     // MARK: - Tests
 
-    func testVerifyCredentials_Success() async throws {
+    @Test func VerifyCredentials_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.actor.getProfile",
             statusCode: 200,
@@ -129,15 +118,15 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let account = try Self.decodeAccount(from: XCTUnwrap(response.body))
-                XCTAssertEqual(account.username, "test")
-                XCTAssertEqual(account.acct, "test.bsky.social")
+                #expect(response.status == .ok)
+                let account = try Self.decodeAccount(from: try #require(response.body))
+                #expect(account.username == "test")
+                #expect(account.acct == "test.bsky.social")
             }
         }
     }
 
-    func testVerifyCredentials_NoAuth() async throws {
+    @Test func VerifyCredentials_NoAuth() async throws {
         let app = try await buildApp()
 
         try await app.test(.router) { client in
@@ -145,12 +134,13 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 uri: "/api/v1/accounts/verify_credentials",
                 method: .get
             ) { response in
-                XCTAssertEqual(response.status, .unauthorized)
+                #expect(response.status == .unauthorized)
             }
         }
     }
 
-    func testGetAccount_Success() async throws {
+    @Test func GetAccount_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.actor.getProfile",
             statusCode: 200,
@@ -165,14 +155,15 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let account = try Self.decodeAccount(from: XCTUnwrap(response.body))
-                XCTAssertEqual(account.acct, "test.bsky.social")
+                #expect(response.status == .ok)
+                let account = try Self.decodeAccount(from: try #require(response.body))
+                #expect(account.acct == "test.bsky.social")
             }
         }
     }
 
-    func testLookupAccount_Success() async throws {
+    @Test func LookupAccount_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.actor.getProfile",
             statusCode: 200,
@@ -187,14 +178,15 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
-                let account = try Self.decodeAccount(from: XCTUnwrap(response.body))
-                XCTAssertEqual(account.acct, "test.bsky.social")
+                #expect(response.status == .ok)
+                let account = try Self.decodeAccount(from: try #require(response.body))
+                #expect(account.acct == "test.bsky.social")
             }
         }
     }
 
-    func testSearchAccounts_Success() async throws {
+    @Test func SearchAccounts_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.actor.searchActors",
             statusCode: 200,
@@ -209,17 +201,18 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let accounts = try decoder.decode([MastodonAccount].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertEqual(accounts.count, 2)
+                let accounts = try decoder.decode([MastodonAccount].self, from: Data(buffer: try #require(response.body)))
+                #expect(accounts.count == 2)
             }
         }
     }
 
-    func testGetAccountStatuses_Success() async throws {
+    @Test func GetAccountStatuses_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.feed.getAuthorFeed",
             statusCode: 200,
@@ -234,18 +227,19 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let statuses = try decoder.decode([String].self, from: Data(buffer: XCTUnwrap(response.body)))
+                let statuses = try decoder.decode([String].self, from: Data(buffer: try #require(response.body)))
                 // Route currently returns empty array - this is expected behavior
-                XCTAssertGreaterThanOrEqual(statuses.count, 0)
+                #expect(statuses.count >= 0)
             }
         }
     }
 
-    func testGetFollowers_Success() async throws {
+    @Test func GetFollowers_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.graph.getFollowers",
             statusCode: 200,
@@ -260,17 +254,18 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let followers = try decoder.decode([MastodonAccount].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertEqual(followers.count, 2)
+                let followers = try decoder.decode([MastodonAccount].self, from: Data(buffer: try #require(response.body)))
+                #expect(followers.count == 2)
             }
         }
     }
 
-    func testGetFollowing_Success() async throws {
+    @Test func GetFollowing_Success() async throws {
+        await MockRequestExecutor.clearMocks()
         await MockRequestExecutor.registerMock(
             pattern: "app.bsky.graph.getFollows",
             statusCode: 200,
@@ -285,13 +280,14 @@ final class AccountRoutesIntegrationTests: XCTestCase {
                 method: .get,
                 headers: [.authorization: "Bearer test_token_123"]
             ) { response in
-                XCTAssertEqual(response.status, .ok)
+                #expect(response.status == .ok)
                 let decoder = JSONDecoder()
                 decoder.keyDecodingStrategy = .convertFromSnakeCase
                 decoder.dateDecodingStrategy = .iso8601
-                let following = try decoder.decode([MastodonAccount].self, from: Data(buffer: XCTUnwrap(response.body)))
-                XCTAssertEqual(following.count, 1)
+                let following = try decoder.decode([MastodonAccount].self, from: Data(buffer: try #require(response.body)))
+                #expect(following.count == 1)
             }
         }
     }
 }
+

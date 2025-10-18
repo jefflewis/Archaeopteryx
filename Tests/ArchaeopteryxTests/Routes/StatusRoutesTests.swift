@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 import Hummingbird
 import HummingbirdTesting
 import Dependencies
@@ -12,16 +12,21 @@ import Logging
 @testable import MastodonModels
 
 /// Tests for StatusRoutes with dependency injection
-final class StatusRoutesTests: XCTestCase {
+@Suite struct StatusRoutesTests {
     var mockCache: InMemoryCache!
     var mockOAuthService: OAuthService!
+    var sessionClient: SessionScopedClient!
     var idMapping: IDMappingService!
     var statusTranslator: StatusTranslator!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        mockCache = InMemoryCache()
-        mockOAuthService = await OAuthService(cache: mockCache)
+    init() async {
+       mockCache = InMemoryCache()
+        mockOAuthService = await OAuthService(
+            cache: mockCache,
+            atprotoServiceURL: "https://bsky.social"
+        )
+
+        sessionClient = await SessionScopedClient(serviceURL: "https://bsky.social")
 
         let snowflakeGenerator = SnowflakeIDGenerator()
         idMapping = IDMappingService(cache: mockCache, generator: snowflakeGenerator)
@@ -38,213 +43,217 @@ final class StatusRoutesTests: XCTestCase {
         )
     }
 
-    override func tearDown() async throws {
-        mockCache = nil
-        mockOAuthService = nil
-        idMapping = nil
-        statusTranslator = nil
-        try await super.tearDown()
-    }
-
     // MARK: - Get Status Tests
 
-    func testGetStatus_WithValidID_ReturnsStatus() async throws {
+    @Test func GetStatus_WithValidID_ReturnsStatus() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             // Test that dependency is properly injected
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
             // Verify the routes struct was created successfully
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testGetStatus_WithAuthError_Returns401() async throws {
+    @Test func GetStatus_WithAuthError_Returns401() async throws {
         try await withDependencies {
             $0.atProtoClient = .testAuthError
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Create Status Tests
 
-    func testCreateStatus_WithValidData_CreatesPost() async throws {
+    @Test func CreateStatus_WithValidData_CreatesPost() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testCreateStatus_WithEmptyText_Returns400() async throws {
+    @Test func CreateStatus_WithEmptyText_Returns400() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Delete Status Tests
 
-    func testDeleteStatus_WithValidID_DeletesPost() async throws {
+    @Test func DeleteStatus_WithValidID_DeletesPost() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Get Context Tests
 
-    func testGetContext_WithValidID_ReturnsThread() async throws {
+    @Test func GetContext_WithValidID_ReturnsThread() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Like/Unlike Tests
 
-    func testFavouriteStatus_WithValidID_LikesPost() async throws {
+    @Test func FavouriteStatus_WithValidID_LikesPost() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testUnfavouriteStatus_NotImplemented() async throws {
+    @Test func UnfavouriteStatus_NotImplemented() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Reblog/Unreblog Tests
 
-    func testReblogStatus_WithValidID_RepostsPost() async throws {
+    @Test func ReblogStatus_WithValidID_RepostsPost() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testUnreblogStatus_NotImplemented() async throws {
+    @Test func UnreblogStatus_NotImplemented() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Get Interactors Tests
 
-    func testGetFavouritedBy_ReturnsEmptyArray() async throws {
+    @Test func GetFavouritedBy_ReturnsEmptyArray() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testGetRebloggedBy_ReturnsEmptyArray() async throws {
+    @Test func GetRebloggedBy_ReturnsEmptyArray() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = StatusRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 statusTranslator: statusTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Dependency Injection Tests
 
-    func testDependencyInjection_UsesTestSuccessMock() async throws {
+    @Test func DependencyInjection_UsesTestSuccessMock() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
@@ -253,12 +262,12 @@ final class StatusRoutesTests: XCTestCase {
 
             // Test that the mock returns expected data
             let profile = try await client.getProfile("test")
-            XCTAssertEqual(profile.handle, "test.bsky.social")
-            XCTAssertEqual(profile.displayName, "Test User")
+            #expect(profile.handle == "test.bsky.social")
+            #expect(profile.displayName == "Test User")
         }
     }
 
-    func testDependencyInjection_UsesAuthErrorMock() async throws {
+    @Test func DependencyInjection_UsesAuthErrorMock() async throws {
         try await withDependencies {
             $0.atProtoClient = .testAuthError
         } operation: {
@@ -278,7 +287,7 @@ final class StatusRoutesTests: XCTestCase {
         }
     }
 
-    func testDependencyInjection_CustomMock() async throws {
+    @Test func DependencyInjection_CustomMock() async throws {
         try await withDependencies {
             var customMock = ATProtoClientDependency.testSuccess
             customMock.getProfile = { _ in
@@ -300,9 +309,10 @@ final class StatusRoutesTests: XCTestCase {
             @Dependency(\.atProtoClient) var client
 
             let profile = try await client.getProfile("custom")
-            XCTAssertEqual(profile.handle, "custom.bsky.social")
-            XCTAssertEqual(profile.displayName, "Custom User")
-            XCTAssertEqual(profile.followersCount, 100)
+            #expect(profile.handle == "custom.bsky.social")
+            #expect(profile.displayName == "Custom User")
+            #expect(profile.followersCount == 100)
         }
     }
 }
+

@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 import Hummingbird
 import HummingbirdTesting
 import Dependencies
@@ -12,16 +12,17 @@ import Logging
 @testable import MastodonModels
 
 /// Tests for NotificationRoutes with dependency injection
-final class NotificationRoutesTests: XCTestCase {
+@Suite struct NotificationRoutesTests {
     var mockCache: InMemoryCache!
     var mockOAuthService: OAuthService!
+    var sessionClient: SessionScopedClient!
     var idMapping: IDMappingService!
     var notificationTranslator: NotificationTranslator!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        mockCache = InMemoryCache()
+    init() async {
+       mockCache = InMemoryCache()
         mockOAuthService = await OAuthService(cache: mockCache)
+        sessionClient = await SessionScopedClient(serviceURL: "https://bsky.social")
 
         let snowflakeGenerator = SnowflakeIDGenerator()
         idMapping = IDMappingService(cache: mockCache, generator: snowflakeGenerator)
@@ -43,47 +44,41 @@ final class NotificationRoutesTests: XCTestCase {
         )
     }
 
-    override func tearDown() async throws {
-        mockCache = nil
-        mockOAuthService = nil
-        idMapping = nil
-        notificationTranslator = nil
-        try await super.tearDown()
-    }
-
     // MARK: - Get Notifications Tests
 
-    func testGetNotifications_WithValidAuth_ReturnsNotifications() async throws {
+    @Test func GetNotifications_WithValidAuth_ReturnsNotifications() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testGetNotifications_WithoutAuth_Returns401() async throws {
+    @Test func GetNotifications_WithoutAuth_Returns401() async throws {
         try await withDependencies {
             $0.atProtoClient = .testAuthError
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testGetNotifications_NotImplemented_ReturnsEmptyArray() async throws {
+    @Test func GetNotifications_NotImplemented_ReturnsEmptyArray() async throws {
         try await withDependencies {
             var mock = ATProtoClientDependency.testSuccess
             mock.getNotifications = { _, _ in
@@ -93,96 +88,102 @@ final class NotificationRoutesTests: XCTestCase {
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testGetNotifications_WithPagination_RespectsLimit() async throws {
+    @Test func GetNotifications_WithPagination_RespectsLimit() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Get Single Notification Tests
 
-    func testGetNotification_WithValidID_Returns404() async throws {
+    @Test func GetNotification_WithValidID_Returns404() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
             // Single notification fetch not fully implemented
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testGetNotification_WithoutAuth_Returns401() async throws {
+    @Test func GetNotification_WithoutAuth_Returns401() async throws {
         try await withDependencies {
             $0.atProtoClient = .testAuthError
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Clear Notifications Tests
 
-    func testClearNotifications_WithValidAuth_UpdatesSeen() async throws {
+    @Test func ClearNotifications_WithValidAuth_UpdatesSeen() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testClearNotifications_WithoutAuth_Returns401() async throws {
+    @Test func ClearNotifications_WithoutAuth_Returns401() async throws {
         try await withDependencies {
             $0.atProtoClient = .testAuthError
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testClearNotifications_NotImplemented_ReturnsSuccess() async throws {
+    @Test func ClearNotifications_NotImplemented_ReturnsSuccess() async throws {
         try await withDependencies {
             var mock = ATProtoClientDependency.testSuccess
             mock.updateSeenNotifications = {
@@ -192,51 +193,54 @@ final class NotificationRoutesTests: XCTestCase {
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Dismiss Notification Tests
 
-    func testDismissNotification_ReturnsSuccess() async throws {
+    @Test func DismissNotification_ReturnsSuccess() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
             // Dismiss just returns success (Bluesky doesn't support individual dismissal)
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
-    func testDismissNotification_WithoutAuth_Returns401() async throws {
+    @Test func DismissNotification_WithoutAuth_Returns401() async throws {
         try await withDependencies {
             $0.atProtoClient = .testAuthError
         } operation: {
             let routes = NotificationRoutes(
                 oauthService: mockOAuthService,
+                sessionClient: sessionClient,
                 idMapping: idMapping,
                 notificationTranslator: notificationTranslator,
                 logger: Logger(label: "test")
             )
 
-            XCTAssertNotNil(routes)
+            #expect(routes != nil)
         }
     }
 
     // MARK: - Dependency Injection Tests
 
-    func testDependencyInjection_UsesTestSuccessMock() async throws {
+    @Test func DependencyInjection_UsesTestSuccessMock() async throws {
         try await withDependencies {
             $0.atProtoClient = .testSuccess
         } operation: {
@@ -244,12 +248,12 @@ final class NotificationRoutesTests: XCTestCase {
 
             // Test that getNotifications is available
             let response = try await client.getNotifications(20, nil)
-            XCTAssertNotNil(response)
-            XCTAssertEqual(response.notifications.count, 0)
+            #expect(response != nil)
+            #expect(response.notifications.count == 0)
         }
     }
 
-    func testDependencyInjection_CustomMock() async throws {
+    @Test func DependencyInjection_CustomMock() async throws {
         try await withDependencies {
             var customMock = ATProtoClientDependency.testSuccess
             customMock.getNotifications = { limit, cursor in
@@ -261,11 +265,11 @@ final class NotificationRoutesTests: XCTestCase {
             @Dependency(\.atProtoClient) var client
 
             let response = try await client.getNotifications(20, nil)
-            XCTAssertEqual(response.cursor, "custom_cursor")
+            #expect(response.cursor == "custom_cursor")
         }
     }
 
-    func testDependencyInjection_UpdateSeenWorks() async throws {
+    @Test func DependencyInjection_UpdateSeenWorks() async throws {
         try await withDependencies {
             var customMock = ATProtoClientDependency.testSuccess
             customMock.updateSeenNotifications = {
@@ -280,3 +284,4 @@ final class NotificationRoutesTests: XCTestCase {
         }
     }
 }
+

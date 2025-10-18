@@ -14,29 +14,26 @@ import Dependencies
 
 /// Account management routes for Mastodon API compatibility
 ///
-/// This struct uses dependency injection via the @Dependency macro to access
-/// the ATProtoClient. This makes the routes fully testable by allowing mock
-/// implementations to be injected during tests.
+/// Uses session-scoped AT Protocol client for multi-user support
 struct AccountRoutes: Sendable {
     let oauthService: OAuthService
-    @Dependency(\.atProtoClient) var atprotoClient
+    let sessionClient: SessionScopedClient
     let idMapping: IDMappingService
     let translator: ProfileTranslator
     let logger: Logger
 
     /// Add account routes to the router
-    ///
-    /// Note: ATProtoClient is injected via @Dependency, not passed as a parameter.
-    /// This enables full testability by allowing mock implementations during tests.
     static func addRoutes(
         to router: Router<some RequestContext>,
         oauthService: OAuthService,
+        sessionClient: SessionScopedClient,
         idMapping: IDMappingService,
         translator: ProfileTranslator,
         logger: Logger
     ) {
         let routes = AccountRoutes(
             oauthService: oauthService,
+            sessionClient: sessionClient,
             idMapping: idMapping,
             translator: translator,
             logger: logger
@@ -93,29 +90,6 @@ struct AccountRoutes: Sendable {
         }
     }
 
-    /// Convenience method for tests
-    ///
-    /// Sets up all dependencies except ATProtoClient, which should be mocked
-    /// using withDependencies { } in tests.
-    static func addRoutes(
-        to router: Router<some RequestContext>,
-        oauthService: OAuthService
-    ) {
-        let logger = Logger(label: "archaeopteryx.accounts")
-        let cache = InMemoryCache()
-        let generator = SnowflakeIDGenerator()
-        let idMapping = IDMappingService(cache: cache, generator: generator)
-        let facetProcessor = FacetProcessor()
-        let translator = ProfileTranslator(idMapping: idMapping, facetProcessor: facetProcessor)
-
-        addRoutes(
-            to: router,
-            oauthService: oauthService,
-            idMapping: idMapping,
-            translator: translator,
-            logger: logger
-        )
-    }
 
     // MARK: - Route Handlers
 
@@ -130,16 +104,22 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token and get DID
-            let did = try await oauthService.validateToken(token)
+            // Validate token and get user context with session
+            let userContext = try await oauthService.validateToken(token)
 
-            // Get profile from AT Proto
-            let profile = try await atprotoClient.getProfile(did)
+            // Get profile from AT Proto using user's session
+            let profile = try await sessionClient.getProfile(
+                actor: userContext.did,
+                session: userContext.sessionData
+            )
 
             // Translate to Mastodon account
             let account = try await translator.translate(profile)
 
-            logger.info("Verified credentials", metadata: ["did": "\(did)", "handle": "\(profile.handle)"])
+            logger.info("Verified credentials", metadata: [
+                "did": "\(userContext.did)",
+                "handle": "\(userContext.handle)"
+            ])
             return try jsonResponse(account, status: .ok)
         } catch {
             logger.warning("Credentials verification failed", metadata: ["error": "\(error)"])
@@ -165,11 +145,14 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
-            // Get profile from AT Proto (acct might be a handle)
-            let profile = try await atprotoClient.getProfile(acct)
+            // Get profile from AT Proto using user's session
+            let profile = try await sessionClient.getProfile(
+                actor: acct,
+                session: userContext.sessionData
+            )
 
             // Translate to Mastodon account
             let account = try await translator.translate(profile)
@@ -197,8 +180,8 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to DID
             guard let did = await idMapping.getDID(forSnowflakeID: snowflakeID) else {
@@ -206,8 +189,11 @@ struct AccountRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Account not found", status: .notFound)
             }
 
-            // Get profile from AT Proto
-            let profile = try await atprotoClient.getProfile(did)
+            // Get profile from AT Proto using user's session
+            let profile = try await sessionClient.getProfile(
+                actor: did,
+                session: userContext.sessionData
+            )
 
             // Translate to Mastodon account
             let account = try await translator.translate(profile)
@@ -239,12 +225,17 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
-            // Search for actors
+            // Search for actors using user's session
             let limit = Int(queryItems["limit"] ?? "40") ?? 40
-            let response = try await atprotoClient.searchActors(query, min(limit, 40), nil)
+            let response = try await sessionClient.searchActors(
+                query: query,
+                limit: min(limit, 40),
+                cursor: nil,
+                session: userContext.sessionData
+            )
 
             // Translate results
             let accounts = try await withThrowingTaskGroup(of: MastodonAccount?.self) { group in
@@ -286,8 +277,8 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to DID
             guard let did = await idMapping.getDID(forSnowflakeID: snowflakeID) else {
@@ -295,8 +286,14 @@ struct AccountRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Account not found", status: .notFound)
             }
 
-            // Get author feed (posts) - for now return empty array
-            _ = try await atprotoClient.getAuthorFeed(did, 20, nil, nil)
+            // Get author feed (posts) using user's session
+            _ = try await sessionClient.getAuthorFeed(
+                actor: did,
+                limit: 20,
+                cursor: nil,
+                filter: nil,
+                session: userContext.sessionData
+            )
 
             logger.info("Account statuses retrieved (empty)", metadata: ["id": "\(snowflakeID)", "did": "\(did)"])
             // Return empty array until Status routes are implemented
@@ -322,8 +319,8 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to DID
             guard let did = await idMapping.getDID(forSnowflakeID: snowflakeID) else {
@@ -331,13 +328,18 @@ struct AccountRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Account not found", status: .notFound)
             }
 
-            // Get followers
+            // Get followers using user's session
             let uri = request.uri
             let queryString = uri.query ?? ""
             let queryItems = parseQueryString(queryString)
             let limit = Int(queryItems["limit"] ?? "40") ?? 40
 
-            let response = try await atprotoClient.getFollowers(did, min(limit, 80), nil)
+            let response = try await sessionClient.getFollowers(
+                actor: did,
+                limit: min(limit, 80),
+                cursor: nil,
+                session: userContext.sessionData
+            )
 
             // Translate followers to accounts
             let accounts = try await withThrowingTaskGroup(of: MastodonAccount?.self) { group in
@@ -379,8 +381,8 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to DID
             guard let did = await idMapping.getDID(forSnowflakeID: snowflakeID) else {
@@ -388,13 +390,18 @@ struct AccountRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Account not found", status: .notFound)
             }
 
-            // Get following
+            // Get following using user's session
             let uri = request.uri
             let queryString = uri.query ?? ""
             let queryItems = parseQueryString(queryString)
             let limit = Int(queryItems["limit"] ?? "40") ?? 40
 
-            let response = try await atprotoClient.getFollowing(did, min(limit, 80), nil)
+            let response = try await sessionClient.getFollowing(
+                actor: did,
+                limit: min(limit, 80),
+                cursor: nil,
+                session: userContext.sessionData
+            )
 
             // Translate following to accounts
             let accounts = try await withThrowingTaskGroup(of: MastodonAccount?.self) { group in
@@ -436,8 +443,8 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map snowflake ID to DID
             guard let did = await idMapping.getDID(forSnowflakeID: snowflakeID) else {
@@ -445,8 +452,11 @@ struct AccountRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Account not found", status: .notFound)
             }
 
-            // Follow user
-            _ = try await atprotoClient.followUser(did)
+            // Follow user using user's session
+            _ = try await sessionClient.followUser(
+                actor: did,
+                session: userContext.sessionData
+            )
 
             // Return relationship
             let relationship = MastodonRelationship(
@@ -561,7 +571,7 @@ struct AccountRoutes: Sendable {
         }
 
         do {
-            // Validate token
+            // Validate token and get user context
             _ = try await oauthService.validateToken(token)
 
             // For now, return basic relationships (not following)

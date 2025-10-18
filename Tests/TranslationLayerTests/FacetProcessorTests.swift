@@ -1,55 +1,49 @@
-import XCTest
+import Testing
 @testable import TranslationLayer
 
 /// Tests for FacetProcessor - Rich text to HTML conversion
-final class FacetProcessorTests: XCTestCase {
-    var sut: FacetProcessor!
+@Suite struct FacetProcessorTests {
+    let sut: FacetProcessor
 
-    override func setUp() async throws {
-        try await super.setUp()
-        sut = FacetProcessor()
-    }
-
-    override func tearDown() async throws {
-        sut = nil
-        try await super.tearDown()
+    init() async {
+       sut = FacetProcessor()
     }
 
     // MARK: - Plain Text Tests
 
-    func testProcessText_PlainText_WrapsInParagraph() {
+    @Test func ProcessText_PlainText_WrapsInParagraph() {
         let text = "Hello world"
         let result = sut.processText(text, facets: nil)
 
-        XCTAssertEqual(result, "<p>Hello world</p>")
+        #expect(result == "<p>Hello world</p>")
     }
 
-    func testProcessText_EmptyText_ReturnsEmptyParagraph() {
+    @Test func ProcessText_EmptyText_ReturnsEmptyParagraph() {
         let text = ""
         let result = sut.processText(text, facets: nil)
 
-        XCTAssertEqual(result, "<p></p>")
+        #expect(result == "<p></p>")
     }
 
-    func testProcessText_MultilineText_PreservesLineBreaks() {
+    @Test func ProcessText_MultilineText_PreservesLineBreaks() {
         let text = "Line 1\nLine 2\nLine 3"
         let result = sut.processText(text, facets: nil)
 
-        XCTAssertEqual(result, "<p>Line 1<br>Line 2<br>Line 3</p>")
+        #expect(result == "<p>Line 1<br>Line 2<br>Line 3</p>")
     }
 
-    func testProcessText_SpecialHTMLCharacters_EscapesCorrectly() {
+    @Test func ProcessText_SpecialHTMLCharacters_EscapesCorrectly() {
         let text = "Test <script>alert('xss')</script> & \"quotes\""
         let result = sut.processText(text, facets: nil)
 
-        XCTAssertTrue(result.contains("&lt;script&gt;"))
-        XCTAssertTrue(result.contains("&amp;"))
-        XCTAssertTrue(result.contains("&quot;") || result.contains("\""))
+        #expect(result.contains("&lt;script&gt;"))
+        #expect(result.contains("&amp;"))
+        #expect(result.contains("&quot;") || result.contains("\""))
     }
 
     // MARK: - Link Processing Tests
 
-    func testProcessFacets_WithLink_CreatesAnchorTag() {
+    @Test func ProcessFacets_WithLink_CreatesAnchorTag() {
         let text = "Check out https://bsky.app"
         let facets = [
             Facet(
@@ -60,12 +54,12 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("<a href=\"https://bsky.app\""))
-        XCTAssertTrue(result.contains("target=\"_blank\""))
-        XCTAssertTrue(result.contains("rel=\"nofollow noopener noreferrer\""))
+        #expect(result.contains("<a href=\"https://bsky.app\""))
+        #expect(result.contains("target=\"_blank\""))
+        #expect(result.contains("rel=\"nofollow noopener noreferrer\""))
     }
 
-    func testProcessFacets_WithMultipleLinks_CreatesMultipleTags() {
+    @Test func ProcessFacets_WithMultipleLinks_CreatesMultipleTags() {
         let text = "Visit https://bsky.app and https://example.com"
         let facets = [
             Facet(
@@ -80,13 +74,13 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("href=\"https://bsky.app\""))
-        XCTAssertTrue(result.contains("href=\"https://example.com\""))
+        #expect(result.contains("href=\"https://bsky.app\""))
+        #expect(result.contains("href=\"https://example.com\""))
     }
 
     // MARK: - Mention Processing Tests
 
-    func testProcessFacets_WithMention_CreatesSpanAndAnchor() {
+    @Test func ProcessFacets_WithMention_CreatesSpanAndAnchor() {
         let text = "Hello @alice.bsky.social"
         let facets = [
             Facet(
@@ -97,12 +91,12 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("<span class=\"h-card\">"))
-        XCTAssertTrue(result.contains("class=\"u-url mention\""))
-        XCTAssertTrue(result.contains("@alice.bsky.social"))
+        #expect(result.contains("<span class=\"h-card\">"))
+        #expect(result.contains("class=\"u-url mention\""))
+        #expect(result.contains("@alice.bsky.social"))
     }
 
-    func testProcessFacets_WithMention_IncludesProperClasses() {
+    @Test func ProcessFacets_WithMention_IncludesProperClasses() {
         let text = "@bob.bsky.social"
         let facets = [
             Facet(
@@ -113,13 +107,13 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("h-card"))
-        XCTAssertTrue(result.contains("u-url mention"))
+        #expect(result.contains("h-card"))
+        #expect(result.contains("u-url mention"))
     }
 
     // MARK: - Hashtag Processing Tests
 
-    func testProcessFacets_WithHashtag_CreatesProperLink() {
+    @Test func ProcessFacets_WithHashtag_CreatesProperLink() {
         let text = "Love #bluesky"
         let facets = [
             Facet(
@@ -130,13 +124,13 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("<a href=\""))
-        XCTAssertTrue(result.contains("/hashtag/bluesky\""))
-        XCTAssertTrue(result.contains("class=\"mention hashtag\""))
-        XCTAssertTrue(result.contains("#bluesky"))
+        #expect(result.contains("<a href=\""))
+        #expect(result.contains("/hashtag/bluesky\""))
+        #expect(result.contains("class=\"mention hashtag\""))
+        #expect(result.contains("#bluesky"))
     }
 
-    func testProcessFacets_WithMultipleHashtags_ProcessesAll() {
+    @Test func ProcessFacets_WithMultipleHashtags_ProcessesAll() {
         let text = "#swift #programming is fun"
         let facets = [
             Facet(
@@ -151,13 +145,13 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("#swift"))
-        XCTAssertTrue(result.contains("#programming"))
+        #expect(result.contains("#swift"))
+        #expect(result.contains("#programming"))
     }
 
     // MARK: - Complex Scenarios
 
-    func testProcessFacets_MixedFacets_ProcessesInOrder() {
+    @Test func ProcessFacets_MixedFacets_ProcessesInOrder() {
         let text = "Hello @alice.bsky.social! Check out https://bsky.app #bluesky"
         let facets = [
             Facet(
@@ -177,28 +171,28 @@ final class FacetProcessorTests: XCTestCase {
         let result = sut.processText(text, facets: facets)
 
         // Verify all facets are present
-        XCTAssertTrue(result.contains("@alice.bsky.social"))
-        XCTAssertTrue(result.contains("https://bsky.app"))
-        XCTAssertTrue(result.contains("#bluesky"))
+        #expect(result.contains("@alice.bsky.social"))
+        #expect(result.contains("https://bsky.app"))
+        #expect(result.contains("#bluesky"))
     }
 
-    func testProcessFacets_NoFacets_ReturnsPlainTextInParagraph() {
+    @Test func ProcessFacets_NoFacets_ReturnsPlainTextInParagraph() {
         let text = "Just plain text"
         let result = sut.processText(text, facets: nil)
 
-        XCTAssertEqual(result, "<p>Just plain text</p>")
+        #expect(result == "<p>Just plain text</p>")
     }
 
-    func testProcessFacets_EmptyFacetsArray_ReturnsPlainTextInParagraph() {
+    @Test func ProcessFacets_EmptyFacetsArray_ReturnsPlainTextInParagraph() {
         let text = "Just plain text"
         let result = sut.processText(text, facets: [])
 
-        XCTAssertEqual(result, "<p>Just plain text</p>")
+        #expect(result == "<p>Just plain text</p>")
     }
 
     // MARK: - Edge Cases
 
-    func testProcessFacets_FacetAtStartOfText_ProcessesCorrectly() {
+    @Test func ProcessFacets_FacetAtStartOfText_ProcessesCorrectly() {
         let text = "#hashtag at start"
         let facets = [
             Facet(
@@ -209,10 +203,10 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("#hashtag"))
+        #expect(result.contains("#hashtag"))
     }
 
-    func testProcessFacets_FacetAtEndOfText_ProcessesCorrectly() {
+    @Test func ProcessFacets_FacetAtEndOfText_ProcessesCorrectly() {
         let text = "Link at end https://example.com"
         let facets = [
             Facet(
@@ -223,10 +217,10 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("href=\"https://example.com\""))
+        #expect(result.contains("href=\"https://example.com\""))
     }
 
-    func testProcessFacets_AdjacentFacets_HandlesCorrectly() {
+    @Test func ProcessFacets_AdjacentFacets_HandlesCorrectly() {
         let text = "@alice.bsky.social@bob.bsky.social"
         let facets = [
             Facet(
@@ -241,22 +235,22 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("@alice.bsky.social"), "Result should contain first mention")
-        XCTAssertTrue(result.contains("@bob.bsky.social"), "Result should contain second mention")
+        #expect(result.contains("@alice.bsky.social"), "Result should contain first mention")
+        #expect(result.contains("@bob.bsky.social"), "Result should contain second mention")
     }
 
-    func testProcessText_VeryLongText_HandlesCorrectly() {
+    @Test func ProcessText_VeryLongText_HandlesCorrectly() {
         let text = String(repeating: "Long text ", count: 100)
         let result = sut.processText(text, facets: nil)
 
-        XCTAssertTrue(result.hasPrefix("<p>"))
-        XCTAssertTrue(result.hasSuffix("</p>"))
-        XCTAssertTrue(result.contains("Long text"))
+        #expect(result.hasPrefix("<p>"))
+        #expect(result.hasSuffix("</p>"))
+        #expect(result.contains("Long text"))
     }
 
     // MARK: - UTF-8 Byte Index Tests
 
-    func testProcessFacets_WithEmoji_HandlesUTF8ByteIndicesCorrectly() {
+    @Test func ProcessFacets_WithEmoji_HandlesUTF8ByteIndicesCorrectly() {
         // Emojis are multi-byte characters - test byte-based indexing
         // "Hello " = 6 bytes, "👋" = 4 bytes, " " = 1 byte, "@alice.bsky.social" = 18 bytes
         let text = "Hello 👋 @alice.bsky.social"
@@ -269,7 +263,8 @@ final class FacetProcessorTests: XCTestCase {
 
         let result = sut.processText(text, facets: facets)
 
-        XCTAssertTrue(result.contains("@alice.bsky.social"), "Result should contain mention")
-        XCTAssertTrue(result.contains("👋"), "Result should contain emoji")
+        #expect(result.contains("@alice.bsky.social"), "Result should contain mention")
+        #expect(result.contains("👋"), "Result should contain emoji")
     }
 }
+

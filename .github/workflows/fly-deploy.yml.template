@@ -1,0 +1,57 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Fly.io
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Swift binary for Linux
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            swift:6.0-jammy \
+            swift build -c release \
+              --static-swift-stdlib \
+              --build-path /workspace/.build
+
+      - name: Verify binary
+        run: |
+          ls -lh .build/x86_64-unknown-linux-gnu/release/Archaeopteryx
+          file .build/x86_64-unknown-linux-gnu/release/Archaeopteryx
+
+      - name: Setup Fly.io CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Verify deployment
+        run: |
+          sleep 10
+          APP_URL="https://$(flyctl info --json | jq -r '.Hostname')"
+          curl -f "$APP_URL/api/v1/instance" || exit 1
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+# Setup Instructions:
+# 1. Get Fly.io API token: `fly tokens create deploy`
+# 2. Add to GitHub secrets:
+#    - Go to: Settings → Secrets and variables → Actions
+#    - Create new secret: FLY_API_TOKEN = <your-token>
+# 3. Rename this file: .github/workflows/fly-deploy.yml.template → .github/workflows/fly-deploy.yml
+# 4. Push to main branch to trigger deployment

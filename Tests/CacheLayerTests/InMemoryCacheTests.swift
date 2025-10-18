@@ -1,48 +1,42 @@
-import XCTest
+import Testing
 @testable import CacheLayer
 
-final class InMemoryCacheTests: XCTestCase {
-    var sut: InMemoryCache!
+@Suite struct InMemoryCacheTests {
+    let sut: InMemoryCache
 
-    override func setUp() async throws {
-        try await super.setUp()
+    init() async {
         sut = InMemoryCache()
-    }
-
-    override func tearDown() async throws {
-        sut = nil
-        try await super.tearDown()
     }
 
     // MARK: - Basic Storage Tests
 
-    func testSet_ValidData_StoresSuccessfully() async throws {
+    @Test func setValidDataStoresSuccessfully() async throws {
         let key = "test_key"
         let value = "test_value"
 
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: String? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
-    func testGet_ExistingKey_ReturnsData() async throws {
+    @Test func getExistingKeyReturnsData() async throws {
         let key = "existing_key"
         let value = 42
 
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: Int? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
-    func testGet_NonExistentKey_ReturnsNil() async throws {
+    @Test func getNonExistentKeyReturnsNil() async throws {
         let retrieved: String? = try await sut.get("non_existent_key")
 
-        XCTAssertNil(retrieved)
+        #expect(retrieved == nil)
     }
 
-    func testDelete_ExistingKey_RemovesData() async throws {
+    @Test func deleteExistingKeyRemovesData() async throws {
         let key = "key_to_delete"
         let value = "temporary"
 
@@ -50,32 +44,32 @@ final class InMemoryCacheTests: XCTestCase {
         try await sut.delete(key)
         let retrieved: String? = try await sut.get(key)
 
-        XCTAssertNil(retrieved)
+        #expect(retrieved == nil)
     }
 
-    func testDelete_NonExistentKey_NoError() async throws {
+    @Test func deleteNonExistentKeyNoError() async throws {
         // Should not throw an error
         try await sut.delete("non_existent_key")
     }
 
-    func testExists_ExistingKey_ReturnsTrue() async throws {
+    @Test func existsExistingKeyReturnsTrue() async throws {
         let key = "existing_key"
         try await sut.set(key, value: "value", ttl: nil)
 
         let exists = try await sut.exists(key)
 
-        XCTAssertTrue(exists)
+        #expect(exists)
     }
 
-    func testExists_NonExistentKey_ReturnsFalse() async throws {
+    @Test func existsNonExistentKeyReturnsFalse() async throws {
         let exists = try await sut.exists("non_existent_key")
 
-        XCTAssertFalse(exists)
+        #expect(!exists)
     }
 
     // MARK: - TTL Tests
 
-    func testSetWithTTL_DataExpires_ReturnsNil() async throws {
+    @Test func setWithTTLDataExpiresReturnsNil() async throws {
         let key = "expiring_key"
         let value = "temporary_value"
         let ttl = 1 // 1 second
@@ -84,17 +78,17 @@ final class InMemoryCacheTests: XCTestCase {
 
         // Data should exist immediately
         let immediateValue: String? = try await sut.get(key)
-        XCTAssertEqual(immediateValue, value)
+        #expect(immediateValue == value)
 
         // Wait for expiration (1.5 seconds to be safe)
         try await Task.sleep(nanoseconds: 1_500_000_000)
 
         // Data should be expired
         let expiredValue: String? = try await sut.get(key)
-        XCTAssertNil(expiredValue)
+        #expect(expiredValue == nil)
     }
 
-    func testSetWithTTL_ExistsCheck_ReturnsFalseAfterExpiration() async throws {
+    @Test func setWithTTLExistsCheckReturnsFalseAfterExpiration() async throws {
         let key = "expiring_key_2"
         let value = "temporary"
         let ttl = 1
@@ -103,17 +97,17 @@ final class InMemoryCacheTests: XCTestCase {
 
         // Should exist immediately
         let existsBefore = try await sut.exists(key)
-        XCTAssertTrue(existsBefore)
+        #expect(existsBefore)
 
         // Wait for expiration
         try await Task.sleep(nanoseconds: 1_500_000_000)
 
         // Should not exist after expiration
         let existsAfter = try await sut.exists(key)
-        XCTAssertFalse(existsAfter)
+        #expect(!existsAfter)
     }
 
-    func testSetWithNoTTL_DataPersists() async throws {
+    @Test func setWithNoTTLDataPersists() async throws {
         let key = "persistent_key"
         let value = "persistent_value"
 
@@ -124,12 +118,12 @@ final class InMemoryCacheTests: XCTestCase {
 
         // Data should still exist
         let retrieved: String? = try await sut.get(key)
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
     // MARK: - Complex Data Types
 
-    func testSet_CodableStruct_StoresAndRetrieves() async throws {
+    @Test func setCodableStructStoresAndRetrieves() async throws {
         struct TestData: Codable, Equatable {
             let id: Int
             let name: String
@@ -142,34 +136,34 @@ final class InMemoryCacheTests: XCTestCase {
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: TestData? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
-    func testSet_Array_StoresAndRetrieves() async throws {
+    @Test func setArrayStoresAndRetrieves() async throws {
         let key = "array_key"
         let value = [1, 2, 3, 4, 5]
 
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: [Int]? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
-    func testSet_Dictionary_StoresAndRetrieves() async throws {
+    @Test func setDictionaryStoresAndRetrieves() async throws {
         let key = "dict_key"
         let value = ["name": "Alice", "city": "NYC"]
 
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: [String: String]? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
     // MARK: - Concurrent Access Tests
 
-    func testConcurrentWrites_NoDataLoss() async throws {
+    @Test func concurrentWritesNoDataLoss() async throws {
         let iterations = 100
-        let cache = sut!
+        let cache = sut
 
         await withTaskGroup(of: Void.self) { group in
             for i in 0..<iterations {
@@ -187,13 +181,13 @@ final class InMemoryCacheTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(successCount, iterations)
+        #expect(successCount == iterations)
     }
 
-    func testConcurrentReads_ConsistentData() async throws {
+    @Test func concurrentReadsConsistentData() async throws {
         let key = "concurrent_read_key"
         let value = "consistent_value"
-        let cache = sut!
+        let cache = sut
         try await cache.set(key, value: value, ttl: nil)
 
         let iterations = 50
@@ -213,55 +207,55 @@ final class InMemoryCacheTests: XCTestCase {
             }
         }
 
-        XCTAssertEqual(results.count, iterations)
-        XCTAssertTrue(results.allSatisfy { $0 == value })
+        #expect(results.count == iterations)
+        #expect(results.allSatisfy { $0 == value })
     }
 
     // MARK: - Overwrite Tests
 
-    func testSet_OverwriteExistingKey_UpdatesValue() async throws {
+    @Test func setOverwriteExistingKeyUpdatesValue() async throws {
         let key = "overwrite_key"
 
         try await sut.set(key, value: "original", ttl: nil)
         try await sut.set(key, value: "updated", ttl: nil)
 
         let retrieved: String? = try await sut.get(key)
-        XCTAssertEqual(retrieved, "updated")
+        #expect(retrieved == "updated")
     }
 
-    func testSet_OverwriteWithDifferentType_UpdatesValue() async throws {
+    @Test func setOverwriteWithDifferentTypeUpdatesValue() async throws {
         let key = "type_change_key"
 
         try await sut.set(key, value: "string_value", ttl: nil)
         try await sut.set(key, value: 42, ttl: nil)
 
         let retrieved: Int? = try await sut.get(key)
-        XCTAssertEqual(retrieved, 42)
+        #expect(retrieved == 42)
     }
 
     // MARK: - Edge Cases
 
-    func testSet_EmptyString_StoresSuccessfully() async throws {
+    @Test func setEmptyStringStoresSuccessfully() async throws {
         let key = "empty_string_key"
         let value = ""
 
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: String? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
-    func testSet_EmptyArray_StoresSuccessfully() async throws {
+    @Test func setEmptyArrayStoresSuccessfully() async throws {
         let key = "empty_array_key"
         let value: [Int] = []
 
         try await sut.set(key, value: value, ttl: nil)
         let retrieved: [Int]? = try await sut.get(key)
 
-        XCTAssertEqual(retrieved, value)
+        #expect(retrieved == value)
     }
 
-    func testGet_WrongType_ReturnsNil() async throws {
+    @Test func getWrongTypeReturnsNil() async throws {
         let key = "type_mismatch_key"
 
         try await sut.set(key, value: "string_value", ttl: nil)
@@ -270,6 +264,6 @@ final class InMemoryCacheTests: XCTestCase {
         let retrieved: Int? = try await sut.get(key)
 
         // Should return nil when type doesn't match
-        XCTAssertNil(retrieved)
+        #expect(retrieved == nil)
     }
 }

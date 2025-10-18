@@ -7,12 +7,12 @@ import ATProtoAdapter
 import IDMapping
 import TranslationLayer
 import MastodonModels
-import Dependencies
+import ArchaeopteryxCore
 
 /// Routes for timeline/feed operations
 struct TimelineRoutes: Sendable {
     let oauthService: OAuthService
-    @Dependency(\.atProtoClient) var atprotoClient
+    let sessionClient: SessionScopedClient
     let idMapping: IDMappingService
     let statusTranslator: StatusTranslator
     let logger: Logger
@@ -20,12 +20,14 @@ struct TimelineRoutes: Sendable {
     static func addRoutes(
         to router: Router<some RequestContext>,
         oauthService: OAuthService,
+        sessionClient: SessionScopedClient,
         idMapping: IDMappingService,
         statusTranslator: StatusTranslator,
         logger: Logger
     ) {
         let routes = TimelineRoutes(
             oauthService: oauthService,
+            sessionClient: sessionClient,
             idMapping: idMapping,
             statusTranslator: statusTranslator,
             logger: logger
@@ -63,16 +65,20 @@ struct TimelineRoutes: Sendable {
         let maxID = queryItems["max_id"]
 
         do {
-            // Validate token and get user DID
-            let userDID = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             logger.info("Getting home timeline", metadata: [
-                "user": "\(userDID)",
+                "user": "\(userContext.did)",
                 "limit": "\(limit)"
             ])
 
-            // Get timeline from AT Protocol
-            let feedResponse = try await atprotoClient.getTimeline(limit, maxID)
+            // Get timeline from AT Protocol with user's session
+            let feedResponse = try await sessionClient.getTimeline(
+                limit: limit,
+                cursor: maxID,
+                session: userContext.sessionData
+            )
 
             // Translate posts to Mastodon statuses
             let statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
@@ -152,8 +158,8 @@ struct TimelineRoutes: Sendable {
         let maxID = queryItems["max_id"]
 
         do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
 
             // Map Snowflake ID back to AT URI (feed URI)
             let feedURI = await idMapping.getATURI(forSnowflakeID: listSnowflakeID) ?? ""
@@ -163,8 +169,13 @@ struct TimelineRoutes: Sendable {
                 "feed_uri": "\(feedURI)"
             ])
 
-            // Get feed from AT Protocol
-            let feedResponse = try await atprotoClient.getFeed(feedURI, limit, maxID)
+            // Get feed from AT Protocol with user's session
+            let feedResponse = try await sessionClient.getFeed(
+                feedURI: feedURI,
+                limit: limit,
+                cursor: maxID,
+                session: userContext.sessionData
+            )
 
             // Translate posts to Mastodon statuses
             let statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in

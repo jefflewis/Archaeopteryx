@@ -6,8 +6,8 @@ import PackageDescription
 let package = Package(
     name: "Archaeopteryx",
     platforms: [
-        .macOS(.v14),
-        .iOS(.v17)
+        .macOS(.v15),
+        .iOS(.v18)
     ],
     products: [
         .executable(
@@ -21,8 +21,8 @@ let package = Package(
     dependencies: [
         // Hummingbird - Modern Swift web framework
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
-        // RediStack - Redis/Valkey client for Swift
-        .package(url: "https://github.com/swift-server/RediStack.git", from: "1.6.0"),
+        // valkey-swift - Official Valkey client for Swift
+        .package(url: "https://github.com/valkey-io/valkey-swift.git", from: "0.3.0"),
         // ATProtoKit - AT Protocol / Bluesky SDK
         .package(url: "https://github.com/MasterJ93/ATProtoKit.git", from: "0.1.0"),
         // swift-dependencies - Dependency injection
@@ -35,6 +35,8 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-metrics.git", from: "2.4.1"),
         // swift-crypto - Cross-platform cryptography (replaces CryptoKit on Linux)
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
+        // swift-docc-plugin - Documentation generation
+        .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
     ],
     targets: [
         // ========================================
@@ -84,7 +86,9 @@ let package = Package(
             dependencies: [
                 "ArchaeopteryxCore",
                 "IDMapping",  // For CacheProtocol
-                .product(name: "RediStack", package: "RediStack"),
+                .product(name: "Valkey", package: "valkey-swift"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesMacros", package: "swift-dependencies"),
             ]
         ),
         .testTarget(
@@ -192,6 +196,8 @@ let package = Package(
                 "CacheLayer",
                 .product(name: "Hummingbird", package: "hummingbird"),
                 .product(name: "HummingbirdTesting", package: "hummingbird"),
+                .product(name: "Dependencies", package: "swift-dependencies"),
+                .product(name: "DependenciesTestSupport", package: "swift-dependencies"),
             ]
         ),
     ]

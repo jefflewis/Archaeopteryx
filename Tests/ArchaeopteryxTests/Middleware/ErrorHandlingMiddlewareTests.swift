@@ -1,84 +1,78 @@
-import XCTest
+import Foundation
+import Testing
 import Logging
 import Hummingbird
 @testable import Archaeopteryx
 
-final class ErrorHandlingMiddlewareTests: XCTestCase {
+@Suite struct ErrorHandlingMiddlewareTests {
     var logger: Logger!
     var middleware: ErrorHandlingMiddleware<BasicRequestContext>!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        logger = Logger(label: "test")
+    init() async {
+       logger = Logger(label: "test")
         logger.logLevel = .critical // Suppress logs during tests
         middleware = ErrorHandlingMiddleware(logger: logger)
     }
 
-    override func tearDown() async throws {
-        logger = nil
-        middleware = nil
-        try await super.tearDown()
-    }
-
     // MARK: - Basic Tests
 
-    func testErrorHandlingMiddleware_CanBeCreated() {
-        XCTAssertNotNil(middleware)
+    @Test func ErrorHandlingMiddleware_CanBeCreated() {
+        #expect(middleware != nil)
     }
 
     // MARK: - HTTPError Tests
 
-    func testHTTPError_BadRequest_HasCorrectProperties() {
+    @Test func HTTPError_BadRequest_HasCorrectProperties() {
         let error = Archaeopteryx.HTTPError.badRequest("Invalid parameter")
 
-        XCTAssertEqual(error.code, "invalid_request")
-        XCTAssertEqual(error.description, "Invalid parameter")
-        XCTAssertEqual(error.status, .badRequest)
+        #expect(error.code == "invalid_request")
+        #expect(error.description == "Invalid parameter")
+        #expect(error.status == .badRequest)
     }
 
-    func testHTTPError_Unauthorized_HasCorrectProperties() {
+    @Test func HTTPError_Unauthorized_HasCorrectProperties() {
         let error = Archaeopteryx.HTTPError.unauthorized()
 
-        XCTAssertEqual(error.code, "unauthorized")
-        XCTAssertEqual(error.description, "Authentication required")
-        XCTAssertEqual(error.status, .unauthorized)
+        #expect(error.code == "unauthorized")
+        #expect(error.description == "Authentication required")
+        #expect(error.status == .unauthorized)
     }
 
-    func testHTTPError_Forbidden_HasCorrectProperties() {
+    @Test func HTTPError_Forbidden_HasCorrectProperties() {
         let error = Archaeopteryx.HTTPError.forbidden()
 
-        XCTAssertEqual(error.code, "forbidden")
-        XCTAssertEqual(error.description, "Access denied")
-        XCTAssertEqual(error.status, .forbidden)
+        #expect(error.code == "forbidden")
+        #expect(error.description == "Access denied")
+        #expect(error.status == .forbidden)
     }
 
-    func testHTTPError_NotFound_HasCorrectProperties() {
+    @Test func HTTPError_NotFound_HasCorrectProperties() {
         let error = Archaeopteryx.HTTPError.notFound("User not found")
 
-        XCTAssertEqual(error.code, "not_found")
-        XCTAssertEqual(error.description, "User not found")
-        XCTAssertEqual(error.status, .notFound)
+        #expect(error.code == "not_found")
+        #expect(error.description == "User not found")
+        #expect(error.status == .notFound)
     }
 
-    func testHTTPError_UnprocessableEntity_HasCorrectProperties() {
+    @Test func HTTPError_UnprocessableEntity_HasCorrectProperties() {
         let error = Archaeopteryx.HTTPError.unprocessableEntity("Validation failed")
 
-        XCTAssertEqual(error.code, "unprocessable_entity")
-        XCTAssertEqual(error.description, "Validation failed")
-        XCTAssertEqual(error.status, .unprocessableContent)
+        #expect(error.code == "unprocessable_entity")
+        #expect(error.description == "Validation failed")
+        #expect(error.status == .unprocessableContent)
     }
 
-    func testHTTPError_InternalServerError_HasCorrectProperties() {
+    @Test func HTTPError_InternalServerError_HasCorrectProperties() {
         let error = Archaeopteryx.HTTPError.internalServerError()
 
-        XCTAssertEqual(error.code, "internal_server_error")
-        XCTAssertEqual(error.description, "Internal server error")
-        XCTAssertEqual(error.status, .internalServerError)
+        #expect(error.code == "internal_server_error")
+        #expect(error.description == "Internal server error")
+        #expect(error.status == .internalServerError)
     }
 
     // MARK: - Error Response Format Tests
 
-    func testErrorResponse_EncodesCorrectly() throws {
+    @Test func ErrorResponse_EncodesCorrectly() throws {
         let response = ErrorResponse(
             error: "test_error",
             errorDescription: "This is a test error"
@@ -88,12 +82,12 @@ final class ErrorHandlingMiddlewareTests: XCTestCase {
         let data = try encoder.encode(response)
         let json = String(data: data, encoding: .utf8)!
 
-        XCTAssertTrue(json.contains("test_error"))
-        XCTAssertTrue(json.contains("This is a test error"))
-        XCTAssertTrue(json.contains("error_description"))
+        #expect(json.contains("test_error"))
+        #expect(json.contains("This is a test error"))
+        #expect(json.contains("error_description"))
     }
 
-    func testErrorResponse_DecodesCorrectly() throws {
+    @Test func ErrorResponse_DecodesCorrectly() throws {
         let json = """
         {
             "error": "test_error",
@@ -105,13 +99,13 @@ final class ErrorHandlingMiddlewareTests: XCTestCase {
         let data = json.data(using: .utf8)!
         let response = try decoder.decode(ErrorResponse.self, from: data)
 
-        XCTAssertEqual(response.error, "test_error")
-        XCTAssertEqual(response.errorDescription, "This is a test error")
+        #expect(response.error == "test_error")
+        #expect(response.errorDescription == "This is a test error")
     }
 
     // MARK: - Error Classification Tests
 
-    func testErrorClassification_HTTPError_MapsCorrectly() {
+    @Test func ErrorClassification_HTTPError_MapsCorrectly() {
         let testCases: [(error: Archaeopteryx.HTTPError, expectedCode: String, expectedStatus: HTTPResponse.Status)] = [
             (Archaeopteryx.HTTPError.badRequest("test"), "invalid_request", .badRequest),
             (Archaeopteryx.HTTPError.unauthorized(), "unauthorized", .unauthorized),
@@ -122,32 +116,32 @@ final class ErrorHandlingMiddlewareTests: XCTestCase {
         ]
 
         for testCase in testCases {
-            XCTAssertEqual(testCase.error.code, testCase.expectedCode)
-            XCTAssertEqual(testCase.error.status, testCase.expectedStatus)
+            #expect(testCase.error.code == testCase.expectedCode)
+            #expect(testCase.error.status == testCase.expectedStatus)
         }
     }
 
     // MARK: - LocalizedError Conformance
 
-    func testHTTPError_ConformsToLocalizedError() {
+    @Test func HTTPError_ConformsToLocalizedError() {
         let error = HTTPError.badRequest("Test error")
 
-        XCTAssertNotNil(error.errorDescription)
-        XCTAssertEqual(error.errorDescription, "Test error")
+        #expect(error.errorDescription != nil)
+        #expect(error.errorDescription == "Test error")
     }
 
     // MARK: - Custom Error Tests
 
-    func testHTTPError_CustomCodeAndMessage() {
+    @Test func HTTPError_CustomCodeAndMessage() {
         let error = Archaeopteryx.HTTPError(
             code: "custom_error",
             description: "This is a custom error",
             status: .badGateway
         )
 
-        XCTAssertEqual(error.code, "custom_error")
-        XCTAssertEqual(error.description, "This is a custom error")
-        XCTAssertEqual(error.status, .badGateway)
+        #expect(error.code == "custom_error")
+        #expect(error.description == "This is a custom error")
+        #expect(error.status == .badGateway)
     }
 }
 
@@ -163,3 +157,4 @@ private struct ErrorResponse: Codable {
         case errorDescription = "error_description"
     }
 }
+

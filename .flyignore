@@ -1,0 +1,57 @@
+# Fly.io ignore file
+# Files/directories to exclude when deploying to Fly.io
+
+# Build artifacts (except Linux release binary needed for deployment)
+.build/debug/
+.build/checkouts/
+.build/*.yaml
+.build/*.json
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+
+# Dependencies
+Packages/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation (not needed in production)
+*.md
+!README.md
+docs/
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+._*
+
+# Environment files (use fly secrets instead)
+.env
+.env.*
+
+# Logs
+*.log
+
+# Testing
+.coverage
+coverage/
+Tests/
+
+# Development files
+docker-compose*.yml
+scripts/
+
+# Fly.io files (redundant to upload)
+.flyignore

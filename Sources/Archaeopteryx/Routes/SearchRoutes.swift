@@ -7,6 +7,7 @@ import IDMapping
 import OAuthService
 import TranslationLayer
 import CacheLayer
+import ArchaeopteryxCore
 import Dependencies
 
 // MARK: - Search Routes
@@ -84,10 +85,10 @@ struct SearchRoutes {
         let offset = offsetStr.flatMap(Int.init) ?? 0
 
         // Optional authentication (search can work without auth)
-        var authenticatedDID: String? = nil
+        var userContext: UserContext? = nil
         if let authHeader = request.headers[.authorization], authHeader.hasPrefix("Bearer ") {
             let token = String(authHeader.dropFirst(7))
-            authenticatedDID = try? await oauthService.validateToken(token)
+            userContext = try? await oauthService.validateToken(token)
         }
 
         do {

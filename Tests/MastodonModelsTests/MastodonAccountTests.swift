@@ -1,9 +1,10 @@
-import XCTest
+import Testing
+import Foundation
 @testable import MastodonModels
 
-final class MastodonAccountTests: XCTestCase {
+@Suite struct MastodonAccountTests {
 
-    func testAccountInitialization() throws {
+    @Test func AccountInitialization() throws {
         let account = MastodonAccount(
             id: "123456789",
             username: "alice",
@@ -23,18 +24,18 @@ final class MastodonAccountTests: XCTestCase {
             locked: false
         )
 
-        XCTAssertEqual(account.id, "123456789")
-        XCTAssertEqual(account.username, "alice")
-        XCTAssertEqual(account.acct, "alice.bsky.social")
-        XCTAssertEqual(account.displayName, "Alice Smith")
-        XCTAssertEqual(account.followersCount, 100)
-        XCTAssertEqual(account.followingCount, 50)
-        XCTAssertEqual(account.statusesCount, 250)
-        XCTAssertFalse(account.bot)
-        XCTAssertFalse(account.locked)
+        #expect(account.id == "123456789")
+        #expect(account.username == "alice")
+        #expect(account.acct == "alice.bsky.social")
+        #expect(account.displayName == "Alice Smith")
+        #expect(account.followersCount == 100)
+        #expect(account.followingCount == 50)
+        #expect(account.statusesCount == 250)
+        #expect(!(account.bot))
+        #expect(!(account.locked))
     }
 
-    func testAccountJSONEncoding() throws {
+    @Test func AccountJSONEncoding() throws {
         let account = MastodonAccount(
             id: "123",
             username: "test",
@@ -59,7 +60,7 @@ final class MastodonAccountTests: XCTestCase {
         encoder.dateEncodingStrategy = .iso8601
 
         let data = try encoder.encode(account)
-        XCTAssertFalse(data.isEmpty)
+        #expect(!(data.isEmpty))
 
         // Verify it can be decoded back
         let decoder = JSONDecoder()
@@ -67,7 +68,8 @@ final class MastodonAccountTests: XCTestCase {
         decoder.dateDecodingStrategy = .iso8601
 
         let decoded = try decoder.decode(MastodonAccount.self, from: data)
-        XCTAssertEqual(decoded.id, account.id)
-        XCTAssertEqual(decoded.username, account.username)
+        #expect(decoded.id == account.id)
+        #expect(decoded.username == account.username)
     }
 }
+

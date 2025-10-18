@@ -1,9 +1,9 @@
-import XCTest
+import Testing
 @testable import ATProtoAdapter
 
-final class ATProtoAdapterTests: XCTestCase {
+@Suite struct ATProtoAdapterTests {
     // Placeholder test file
-    func testPlaceholder() throws {
-        XCTAssertTrue(true)
+    @Test func placeholder() throws {
+        #expect(true)
     }
 }

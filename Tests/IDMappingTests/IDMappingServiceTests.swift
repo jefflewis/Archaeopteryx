@@ -1,30 +1,22 @@
-import XCTest
+import Testing
 @testable import IDMapping
 
 /// Tests for IDMappingService
 /// Following TDD methodology - these tests should fail until we implement the service
-final class IDMappingServiceTests: XCTestCase {
-    var sut: IDMappingService!
-    var mockCache: MockCacheService!
-    var generator: SnowflakeIDGenerator!
+@Suite struct IDMappingServiceTests {
+    let sut: IDMappingService
+    let mockCache: MockCacheService
+    let generator: SnowflakeIDGenerator
 
-    override func setUp() async throws {
-        try await super.setUp()
+    init() async {
         mockCache = MockCacheService()
         generator = SnowflakeIDGenerator()
         sut = IDMappingService(cache: mockCache, generator: generator)
     }
 
-    override func tearDown() async throws {
-        sut = nil
-        mockCache = nil
-        generator = nil
-        try await super.tearDown()
-    }
-
     // MARK: - DID to Snowflake Mapping Tests
 
-    func testGetSnowflakeForDID_NewDID_GeneratesConsistentID() async throws {
+    @Test func getSnowflakeForDIDNewDIDGeneratesConsistentID() async throws {
         // Given
         let did = "did:plc:abc123xyz"
 
@@ -33,11 +25,11 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake2 = await sut.getSnowflakeID(forDID: did)
 
         // Then
-        XCTAssertNotEqual(snowflake1, 0, "Snowflake ID should not be zero")
-        XCTAssertEqual(snowflake1, snowflake2, "Same DID should always return same Snowflake ID (deterministic)")
+        #expect(snowflake1 != 0, "Snowflake ID should not be zero")
+        #expect(snowflake1 == snowflake2, "Same DID should always return same Snowflake ID (deterministic)")
     }
 
-    func testGetSnowflakeForDID_DifferentDIDs_GenerateDifferentIDs() async throws {
+    @Test func getSnowflakeForDIDDifferentDIDsGenerateDifferentIDs() async throws {
         // Given
         let did1 = "did:plc:abc123"
         let did2 = "did:plc:xyz789"
@@ -47,10 +39,10 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake2 = await sut.getSnowflakeID(forDID: did2)
 
         // Then
-        XCTAssertNotEqual(snowflake1, snowflake2, "Different DIDs should generate different Snowflake IDs")
+        #expect(snowflake1 != snowflake2, "Different DIDs should generate different Snowflake IDs")
     }
 
-    func testGetSnowflakeForDID_ExistingDID_ReturnsCachedID() async throws {
+    @Test func getSnowflakeForDIDExistingDIDReturnsCachedID() async throws {
         // Given
         let did = "did:plc:cached123"
         let cachedSnowflake: Int64 = 999888777666
@@ -62,12 +54,12 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake = await sut.getSnowflakeID(forDID: did)
 
         // Then
-        XCTAssertEqual(snowflake, cachedSnowflake, "Should return cached Snowflake ID")
+        #expect(snowflake == cachedSnowflake, "Should return cached Snowflake ID")
     }
 
     // MARK: - Reverse Lookup Tests
 
-    func testGetDIDForSnowflake_ExistingMapping_ReturnsDID() async throws {
+    @Test func getDIDForSnowflakeExistingMappingReturnsDID() async throws {
         // Given
         let did = "did:plc:reverse123"
         let snowflake = await sut.getSnowflakeID(forDID: did)
@@ -76,10 +68,10 @@ final class IDMappingServiceTests: XCTestCase {
         let retrievedDID = await sut.getDID(forSnowflakeID: snowflake)
 
         // Then
-        XCTAssertEqual(retrievedDID, did, "Should retrieve original DID from Snowflake ID")
+        #expect(retrievedDID == did, "Should retrieve original DID from Snowflake ID")
     }
 
-    func testGetDIDForSnowflake_NonExistent_ReturnsNil() async throws {
+    @Test func getDIDForSnowflakeNonExistentReturnsNil() async throws {
         // Given
         let nonExistentSnowflake: Int64 = 123456789
 
@@ -87,12 +79,12 @@ final class IDMappingServiceTests: XCTestCase {
         let retrievedDID = await sut.getDID(forSnowflakeID: nonExistentSnowflake)
 
         // Then
-        XCTAssertNil(retrievedDID, "Should return nil for non-existent Snowflake ID")
+        #expect(retrievedDID == nil, "Should return nil for non-existent Snowflake ID")
     }
 
     // MARK: - AT URI to Snowflake Tests
 
-    func testGetSnowflakeForATURI_NewURI_GeneratesID() async throws {
+    @Test func getSnowflakeForATURINewURIGeneratesID() async throws {
         // Given
         let atURI = "at://did:plc:abc123/app.bsky.feed.post/3k2ykhz4lks2x"
 
@@ -100,10 +92,10 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake = await sut.getSnowflakeID(forATURI: atURI)
 
         // Then
-        XCTAssertNotEqual(snowflake, 0, "Should generate non-zero Snowflake ID for AT URI")
+        #expect(snowflake != 0, "Should generate non-zero Snowflake ID for AT URI")
     }
 
-    func testGetSnowflakeForATURI_SameURI_ReturnsConsistentID() async throws {
+    @Test func getSnowflakeForATURISameURIReturnsConsistentID() async throws {
         // Given
         let atURI = "at://did:plc:test/app.bsky.feed.post/abc"
 
@@ -112,10 +104,10 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake2 = await sut.getSnowflakeID(forATURI: atURI)
 
         // Then
-        XCTAssertEqual(snowflake1, snowflake2, "Same AT URI should return same Snowflake ID")
+        #expect(snowflake1 == snowflake2, "Same AT URI should return same Snowflake ID")
     }
 
-    func testGetSnowflakeForATURI_ExistingURI_ReturnsCachedID() async throws {
+    @Test func getSnowflakeForATURIExistingURIReturnsCachedID() async throws {
         // Given
         let atURI = "at://did:plc:cached/app.bsky.feed.post/xyz"
         let cachedSnowflake: Int64 = 555444333222
@@ -127,10 +119,10 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake = await sut.getSnowflakeID(forATURI: atURI)
 
         // Then
-        XCTAssertEqual(snowflake, cachedSnowflake, "Should return cached Snowflake ID for AT URI")
+        #expect(snowflake == cachedSnowflake, "Should return cached Snowflake ID for AT URI")
     }
 
-    func testGetATURIForSnowflake_ExistingMapping_ReturnsATURI() async throws {
+    @Test func getATURIForSnowflakeExistingMappingReturnsATURI() async throws {
         // Given
         let atURI = "at://did:plc:reverse/app.bsky.feed.post/123"
         let snowflake = await sut.getSnowflakeID(forATURI: atURI)
@@ -139,12 +131,12 @@ final class IDMappingServiceTests: XCTestCase {
         let retrievedURI = await sut.getATURI(forSnowflakeID: snowflake)
 
         // Then
-        XCTAssertEqual(retrievedURI, atURI, "Should retrieve original AT URI from Snowflake ID")
+        #expect(retrievedURI == atURI, "Should retrieve original AT URI from Snowflake ID")
     }
 
     // MARK: - Handle to Snowflake Tests
 
-    func testGetSnowflakeForHandle_ValidHandle_ResolvesToDID() async throws {
+    @Test func getSnowflakeForHandleValidHandleResolvesToDID() async throws {
         // Given
         let handle = "alice.bsky.social"
         let did = "did:plc:alice123"
@@ -156,11 +148,10 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake = await sut.getSnowflakeID(forHandle: handle)
 
         // Then
-        XCTAssertNotNil(snowflake, "Should resolve handle to Snowflake ID")
-        XCTAssertNotEqual(snowflake, 0, "Snowflake ID should not be zero")
+        #expect(snowflake != 0, "Snowflake ID should not be zero")
     }
 
-    func testGetSnowflakeForHandle_UnresolvableHandle_ReturnsZero() async throws {
+    @Test func getSnowflakeForHandleUnresolvableHandleReturnsZero() async throws {
         // Given
         let handle = "nonexistent.handle"
 
@@ -168,12 +159,12 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake = await sut.getSnowflakeID(forHandle: handle)
 
         // Then
-        XCTAssertEqual(snowflake, 0, "Should return zero for unresolvable handle")
+        #expect(snowflake == 0, "Should return zero for unresolvable handle")
     }
 
     // MARK: - Cache Integration Tests
 
-    func testIDMapping_StoresInCache_PersistsAcrossLookups() async throws {
+    @Test func idMappingStoresInCachePersistsAcrossLookups() async throws {
         // Given
         let did = "did:plc:persist123"
 
@@ -187,7 +178,7 @@ final class IDMappingServiceTests: XCTestCase {
         let snowflake2 = await newService.getSnowflakeID(forDID: did)
 
         // Then
-        XCTAssertEqual(snowflake1, snowflake2, "Snowflake ID should persist across service instances via cache")
+        #expect(snowflake1 == snowflake2, "Snowflake ID should persist across service instances via cache")
     }
 }
 

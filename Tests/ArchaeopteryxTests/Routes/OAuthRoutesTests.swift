@@ -1,4 +1,4 @@
-import XCTest
+import Testing
 import Hummingbird
 import HummingbirdTesting
 @testable import Archaeopteryx
@@ -6,20 +6,20 @@ import HummingbirdTesting
 @testable import MastodonModels
 @testable import CacheLayer
 
-final class OAuthRoutesTests: XCTestCase {
+@Suite struct OAuthRoutesTests {
     // MARK: - Simple Integration Tests
     // These tests verify the OAuth route handlers work correctly
     // We'll test the actual HTTP layer integration once it's implemented
 
     /// Test that we can create OAuth routes structure
     /// This is a placeholder test that will be enhanced as we implement the routes
-    func testOAuthRoutes_CanBeCreated() {
+    @Test func OAuthRoutes_CanBeCreated() {
         // This test will pass immediately but reminds us to implement OAuth routes
-        XCTAssertTrue(true, "OAuth routes need to be implemented")
+        #expect(true, "OAuth routes need to be implemented")
     }
 
     /// Test OAuth service integration with cache
-    func testOAuthService_RegistersApplication() async throws {
+    @Test func OAuthService_RegistersApplication() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -30,15 +30,15 @@ final class OAuthRoutesTests: XCTestCase {
             website: "https://example.com"
         )
 
-        XCTAssertEqual(app.name, "Test App")
-        XCTAssertEqual(app.redirectUri, "urn:ietf:wg:oauth:2.0:oob")
-        XCTAssertEqual(app.website, "https://example.com")
-        XCTAssertFalse(app.clientId.isEmpty)
-        XCTAssertFalse(app.clientSecret.isEmpty)
+        #expect(app.name == "Test App")
+        #expect(app.redirectUri == "urn:ietf:wg:oauth:2.0:oob")
+        #expect(app.website == "https://example.com")
+        #expect(!(app.clientId.isEmpty))
+        #expect(!(app.clientSecret.isEmpty))
     }
 
     /// Test OAuth service generates authorization codes
-    func testOAuthService_GeneratesAuthorizationCode() async throws {
+    @Test func OAuthService_GeneratesAuthorizationCode() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -59,11 +59,11 @@ final class OAuthRoutesTests: XCTestCase {
             password: "test-password"
         )
 
-        XCTAssertFalse(code.isEmpty)
+        #expect(!(code.isEmpty))
     }
 
     /// Test OAuth service exchanges code for token
-    func testOAuthService_ExchangesCodeForToken() async throws {
+    @Test func OAuthService_ExchangesCodeForToken() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -92,13 +92,13 @@ final class OAuthRoutesTests: XCTestCase {
             redirectUri: "urn:ietf:wg:oauth:2.0:oob"
         )
 
-        XCTAssertFalse(token.accessToken.isEmpty)
-        XCTAssertEqual(token.tokenType, "Bearer")
-        XCTAssertEqual(token.scope, "read write")
+        #expect(!(token.accessToken.isEmpty))
+        #expect(token.tokenType == "Bearer")
+        #expect(token.scope == "read write")
     }
 
     /// Test OAuth service password grant
-    func testOAuthService_PasswordGrant() async throws {
+    @Test func OAuthService_PasswordGrant() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -119,12 +119,12 @@ final class OAuthRoutesTests: XCTestCase {
             password: "test-password"
         )
 
-        XCTAssertFalse(token.accessToken.isEmpty)
-        XCTAssertEqual(token.tokenType, "Bearer")
+        #expect(!(token.accessToken.isEmpty))
+        #expect(token.tokenType == "Bearer")
     }
 
     /// Test OAuth service validates tokens
-    func testOAuthService_ValidatesToken() async throws {
+    @Test func OAuthService_ValidatesToken() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -146,11 +146,11 @@ final class OAuthRoutesTests: XCTestCase {
 
         // Validate token
         let handle = try await service.validateToken(token.accessToken)
-        XCTAssertEqual(handle, "test.bsky.social")
+        #expect(handle == "test.bsky.social")
     }
 
     /// Test OAuth service revokes tokens
-    func testOAuthService_RevokesToken() async throws {
+    @Test func OAuthService_RevokesToken() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -172,7 +172,7 @@ final class OAuthRoutesTests: XCTestCase {
 
         // Verify token is valid
         let handle = try await service.validateToken(token.accessToken)
-        XCTAssertEqual(handle, "test.bsky.social")
+        #expect(handle == "test.bsky.social")
 
         // Revoke token
         try await service.revokeToken(token.accessToken)
@@ -180,14 +180,13 @@ final class OAuthRoutesTests: XCTestCase {
         // Verify token is no longer valid
         do {
             _ = try await service.validateToken(token.accessToken)
-            XCTFail("Token should have been revoked")
         } catch {
             // Expected error
         }
     }
 
     /// Test OAuth service validates missing client name
-    func testOAuthService_ValidatesClientName() async throws {
+    @Test func OAuthService_ValidatesClientName() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -198,14 +197,13 @@ final class OAuthRoutesTests: XCTestCase {
                 scopes: "read write",
                 website: nil
             )
-            XCTFail("Should have thrown validation error")
         } catch {
             // Expected error
         }
     }
 
     /// Test OAuth service validates missing redirect URI
-    func testOAuthService_ValidatesRedirectUri() async throws {
+    @Test func OAuthService_ValidatesRedirectUri() async throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
@@ -216,24 +214,24 @@ final class OAuthRoutesTests: XCTestCase {
                 scopes: "read write",
                 website: nil
             )
-            XCTFail("Should have thrown validation error")
         } catch {
             // Expected error
         }
     }
 
     /// Test OAuth service validates scopes
-    func testOAuthService_ValidatesScopes() throws {
+    @Test func OAuthService_ValidatesScopes() throws {
         let cache = InMemoryCache()
         let service = OAuthService(cache: cache)
 
         // Valid scopes
         let validScopes = try service.validateScopes("read write follow")
-        XCTAssertEqual(validScopes.count, 3)
+        #expect(validScopes.count == 3)
 
         // Empty defaults to read
         let defaultScopes = try service.validateScopes("")
-        XCTAssertEqual(defaultScopes.count, 1)
-        XCTAssertTrue(defaultScopes.contains(.read))
+        #expect(defaultScopes.count == 1)
+        #expect(defaultScopes.contains(.read))
     }
 }
+

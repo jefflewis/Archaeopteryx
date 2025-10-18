@@ -1,42 +1,35 @@
-import XCTest
+import Foundation
+import Testing
 @testable import Archaeopteryx
 @testable import MastodonModels
 @testable import IDMapping
 @testable import CacheLayer
 
-final class SearchRoutesTests: XCTestCase {
+@Suite struct SearchRoutesTests {
     var cache: InMemoryCache!
     var idMapping: IDMappingService!
     var generator: SnowflakeIDGenerator!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        cache = InMemoryCache()
+    init() async {
+       cache = InMemoryCache()
         generator = SnowflakeIDGenerator()
         idMapping = IDMappingService(cache: cache, generator: generator)
     }
 
-    override func tearDown() async throws {
-        cache = nil
-        idMapping = nil
-        generator = nil
-        try await super.tearDown()
-    }
-
     // MARK: - MastodonTag Model Tests
 
-    func testMastodonTag_CanBeCreated() {
+    @Test func MastodonTag_CanBeCreated() {
         let tag = MastodonTag(
             name: "bluesky",
             url: "https://bsky.app/hashtag/bluesky"
         )
 
-        XCTAssertEqual(tag.name, "bluesky")
-        XCTAssertEqual(tag.url, "https://bsky.app/hashtag/bluesky")
-        XCTAssertNil(tag.history)
+        #expect(tag.name == "bluesky")
+        #expect(tag.url == "https://bsky.app/hashtag/bluesky")
+        #expect(tag.history == nil)
     }
 
-    func testMastodonTag_WithHistory() {
+    @Test func MastodonTag_WithHistory() {
         let history = [
             MastodonTagHistory(day: "1696118400", uses: "42", accounts: "12")
         ]
@@ -46,12 +39,12 @@ final class SearchRoutesTests: XCTestCase {
             history: history
         )
 
-        XCTAssertEqual(tag.name, "technology")
-        XCTAssertEqual(tag.history?.count, 1)
-        XCTAssertEqual(tag.history?.first?.uses, "42")
+        #expect(tag.name == "technology")
+        #expect(tag.history?.count == 1)
+        #expect(tag.history?.first?.uses == "42")
     }
 
-    func testMastodonTag_EncodesCorrectly() throws {
+    @Test func MastodonTag_EncodesCorrectly() throws {
         let tag = MastodonTag(
             name: "test",
             url: "https://bsky.app/hashtag/test"
@@ -60,25 +53,25 @@ final class SearchRoutesTests: XCTestCase {
         let data = try JSONEncoder().encode(tag)
         let decoded = try JSONDecoder().decode(MastodonTag.self, from: data)
 
-        XCTAssertEqual(decoded.name, "test")
-        XCTAssertEqual(decoded.url, "https://bsky.app/hashtag/test")
+        #expect(decoded.name == "test")
+        #expect(decoded.url == "https://bsky.app/hashtag/test")
     }
 
     // MARK: - MastodonSearchResults Model Tests
 
-    func testMastodonSearchResults_CanBeCreated() {
+    @Test func MastodonSearchResults_CanBeCreated() {
         let results = MastodonSearchResults(
             accounts: [],
             statuses: [],
             hashtags: []
         )
 
-        XCTAssertTrue(results.accounts.isEmpty)
-        XCTAssertTrue(results.statuses.isEmpty)
-        XCTAssertTrue(results.hashtags.isEmpty)
+        #expect(results.accounts.isEmpty)
+        #expect(results.statuses.isEmpty)
+        #expect(results.hashtags.isEmpty)
     }
 
-    func testMastodonSearchResults_WithResults() {
+    @Test func MastodonSearchResults_WithResults() {
         let createdAt = Date(timeIntervalSince1970: 1672531200) // 2023-01-01
         let account = MastodonAccount(
             id: "123",
@@ -110,12 +103,12 @@ final class SearchRoutesTests: XCTestCase {
             hashtags: [tag]
         )
 
-        XCTAssertEqual(results.accounts.count, 1)
-        XCTAssertEqual(results.hashtags.count, 1)
-        XCTAssertTrue(results.statuses.isEmpty)
+        #expect(results.accounts.count == 1)
+        #expect(results.hashtags.count == 1)
+        #expect(results.statuses.isEmpty)
     }
 
-    func testMastodonSearchResults_EncodesWithSnakeCase() throws {
+    @Test func MastodonSearchResults_EncodesWithSnakeCase() throws {
         let results = MastodonSearchResults(
             accounts: [],
             statuses: [],
@@ -128,14 +121,14 @@ final class SearchRoutesTests: XCTestCase {
         let json = String(data: data, encoding: .utf8)!
 
         // Should have empty arrays
-        XCTAssertTrue(json.contains("accounts"))
-        XCTAssertTrue(json.contains("statuses"))
-        XCTAssertTrue(json.contains("hashtags"))
+        #expect(json.contains("accounts"))
+        #expect(json.contains("statuses"))
+        #expect(json.contains("hashtags"))
     }
 
     // MARK: - Search Routes Integration Tests
 
-    func testSearchRoutes_PlaceholderForImplementation() {
+    @Test func SearchRoutes_PlaceholderForImplementation() {
         // This test ensures the Search routes file can be created
         // Full HTTP integration tests will be added when we implement the routes
         //
@@ -160,6 +153,7 @@ final class SearchRoutesTests: XCTestCase {
         // - Search with auth can use 'following' filter
         // - Search respects limit parameter
         // - Search with invalid type returns 400
-        XCTAssertTrue(true, "Search routes need HTTP integration tests")
+        #expect(true, "Search routes need HTTP integration tests")
     }
 }
+

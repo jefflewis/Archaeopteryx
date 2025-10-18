@@ -1,31 +1,24 @@
-import XCTest
+import Foundation
+import Testing
 @testable import Archaeopteryx
 @testable import MastodonModels
 @testable import IDMapping
 @testable import CacheLayer
 
-final class MediaRoutesTests: XCTestCase {
+@Suite struct MediaRoutesTests {
     var cache: InMemoryCache!
     var idMapping: IDMappingService!
     var generator: SnowflakeIDGenerator!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        cache = InMemoryCache()
+    init() async {
+       cache = InMemoryCache()
         generator = SnowflakeIDGenerator()
         idMapping = IDMappingService(cache: cache, generator: generator)
     }
 
-    override func tearDown() async throws {
-        cache = nil
-        idMapping = nil
-        generator = nil
-        try await super.tearDown()
-    }
-
     // MARK: - MediaAttachment Model Tests
 
-    func testMediaAttachment_CanBeCreated() {
+    @Test func MediaAttachment_CanBeCreated() {
         let media = MediaAttachment(
             id: "123456",
             type: .image,
@@ -34,14 +27,14 @@ final class MediaRoutesTests: XCTestCase {
             description: "A beautiful sunset"
         )
 
-        XCTAssertEqual(media.id, "123456")
-        XCTAssertEqual(media.type, .image)
-        XCTAssertEqual(media.url, "https://example.com/image.jpg")
-        XCTAssertEqual(media.previewUrl, "https://example.com/thumb.jpg")
-        XCTAssertEqual(media.description, "A beautiful sunset")
+        #expect(media.id == "123456")
+        #expect(media.type == .image)
+        #expect(media.url == "https://example.com/image.jpg")
+        #expect(media.previewUrl == "https://example.com/thumb.jpg")
+        #expect(media.description == "A beautiful sunset")
     }
 
-    func testMediaAttachment_EncodesWithSnakeCase() throws {
+    @Test func MediaAttachment_EncodesWithSnakeCase() throws {
         let media = MediaAttachment(
             id: "123456",
             type: .video,
@@ -56,30 +49,30 @@ final class MediaRoutesTests: XCTestCase {
         let json = String(data: data, encoding: .utf8)!
 
         // Verify snake_case keys
-        XCTAssertTrue(json.contains("preview_url"))
+        #expect(json.contains("preview_url"))
     }
 
-    func testMediaAttachment_SupportsAllTypes() {
-        XCTAssertEqual(MediaType.image.rawValue, "image")
-        XCTAssertEqual(MediaType.video.rawValue, "video")
-        XCTAssertEqual(MediaType.gifv.rawValue, "gifv")
-        XCTAssertEqual(MediaType.audio.rawValue, "audio")
-        XCTAssertEqual(MediaType.unknown.rawValue, "unknown")
+    @Test func MediaAttachment_SupportsAllTypes() {
+        #expect(MediaType.image.rawValue == "image")
+        #expect(MediaType.video.rawValue == "video")
+        #expect(MediaType.gifv.rawValue == "gifv")
+        #expect(MediaType.audio.rawValue == "audio")
+        #expect(MediaType.unknown.rawValue == "unknown")
     }
 
-    func testMediaAttachment_WithoutOptionalFields() {
+    @Test func MediaAttachment_WithoutOptionalFields() {
         let media = MediaAttachment(
             id: "789",
             type: .image,
             url: "https://example.com/img.png"
         )
 
-        XCTAssertEqual(media.id, "789")
-        XCTAssertNil(media.previewUrl)
-        XCTAssertNil(media.description)
+        #expect(media.id == "789")
+        #expect(media.previewUrl == nil)
+        #expect(media.description == nil)
     }
 
-    func testMediaAttachment_SupportsEquatable() {
+    @Test func MediaAttachment_SupportsEquatable() {
         let media1 = MediaAttachment(
             id: "123",
             type: .image,
@@ -94,10 +87,10 @@ final class MediaRoutesTests: XCTestCase {
             description: "Test"
         )
 
-        XCTAssertEqual(media1, media2)
+        #expect(media1 == media2)
     }
 
-    func testMediaAttachment_DecodesCorrectly() throws {
+    @Test func MediaAttachment_DecodesCorrectly() throws {
         let original = MediaAttachment(
             id: "456",
             type: .gifv,
@@ -109,36 +102,36 @@ final class MediaRoutesTests: XCTestCase {
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(MediaAttachment.self, from: data)
 
-        XCTAssertEqual(decoded.id, "456")
-        XCTAssertEqual(decoded.type, .gifv)
-        XCTAssertEqual(decoded.url, "https://example.com/anim.gif")
-        XCTAssertEqual(decoded.previewUrl, "https://example.com/preview.jpg")
-        XCTAssertEqual(decoded.description, "Animated GIF")
+        #expect(decoded.id == "456")
+        #expect(decoded.type == .gifv)
+        #expect(decoded.url == "https://example.com/anim.gif")
+        #expect(decoded.previewUrl == "https://example.com/preview.jpg")
+        #expect(decoded.description == "Animated GIF")
     }
 
     // MARK: - ID Mapping Tests for Media
 
-    func testIDMapping_GeneratesSnowflakeForBlobCID() async throws {
+    @Test func IDMapping_GeneratesSnowflakeForBlobCID() async throws {
         let cid = "bafyreib2rxk3rh6kzwq"
 
         let snowflake1 = await idMapping.getSnowflakeID(forATURI: cid)
         let snowflake2 = await idMapping.getSnowflakeID(forATURI: cid)
 
         // Should be deterministic
-        XCTAssertEqual(snowflake1, snowflake2)
-        XCTAssertGreaterThan(snowflake1, 0)
+        #expect(snowflake1 == snowflake2)
+        #expect(snowflake1 > 0)
     }
 
-    func testIDMapping_ReverseLookupBlobCID() async throws {
+    @Test func IDMapping_ReverseLookupBlobCID() async throws {
         let cid = "bafkreifzjut3te2nhyekklss"
 
         let snowflake = await idMapping.getSnowflakeID(forATURI: cid)
         let retrievedCID = await idMapping.getATURI(forSnowflakeID: snowflake)
 
-        XCTAssertEqual(retrievedCID, cid)
+        #expect(retrievedCID == cid)
     }
 
-    func testIDMapping_HandlesMultipleBlobCIDs() async throws {
+    @Test func IDMapping_HandlesMultipleBlobCIDs() async throws {
         let cid1 = "bafyreiaaa"
         let cid2 = "bafyreibbb"
         let cid3 = "bafyreiccc"
@@ -148,23 +141,23 @@ final class MediaRoutesTests: XCTestCase {
         let snowflake3 = await idMapping.getSnowflakeID(forATURI: cid3)
 
         // All should be unique
-        XCTAssertNotEqual(snowflake1, snowflake2)
-        XCTAssertNotEqual(snowflake2, snowflake3)
-        XCTAssertNotEqual(snowflake1, snowflake3)
+        #expect(snowflake1 != snowflake2)
+        #expect(snowflake2 != snowflake3)
+        #expect(snowflake1 != snowflake3)
 
         // Reverse lookups should work
         let retrieved1 = await idMapping.getATURI(forSnowflakeID: snowflake1)
         let retrieved2 = await idMapping.getATURI(forSnowflakeID: snowflake2)
         let retrieved3 = await idMapping.getATURI(forSnowflakeID: snowflake3)
 
-        XCTAssertEqual(retrieved1, cid1)
-        XCTAssertEqual(retrieved2, cid2)
-        XCTAssertEqual(retrieved3, cid3)
+        #expect(retrieved1 == cid1)
+        #expect(retrieved2 == cid2)
+        #expect(retrieved3 == cid3)
     }
 
     // MARK: - Media Routes Integration Tests
 
-    func testMediaRoutes_PlaceholderForUploadImplementation() {
+    @Test func MediaRoutes_PlaceholderForUploadImplementation() {
         // This test ensures the Media routes file can be created
         // Full HTTP integration tests will be added when we implement the routes
         //
@@ -185,6 +178,7 @@ final class MediaRoutesTests: XCTestCase {
         // - Get media with invalid ID (should fail with 404)
         // - Update media description
         // - Update media not owned by user (should fail with 403)
-        XCTAssertTrue(true, "Media routes need HTTP integration tests")
+        #expect(true, "Media routes need HTTP integration tests")
     }
 }
+

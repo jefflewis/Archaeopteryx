@@ -1,0 +1,119 @@
+# Fly.io configuration for Archaeopteryx
+# Bluesky-to-Mastodon API compatibility bridge
+#
+# Setup:
+#   1. Create Valkey database: fly valkey create
+#   2. Attach to app: fly valkey attach <valkey-name>
+#   3. (Optional) Setup OpenTelemetry collector
+#   4. Deploy: fly deploy
+#
+# Management:
+#   fly secrets set KEY=value
+#   fly scale count 2
+#   fly logs
+#   fly status
+
+app = 'archaeopteryx' # Change this to your app name
+primary_region = 'sjc' # Change to your preferred region (e.g., ord, iad, lhr, fra, nrt)
+
+# Kill signal (required for graceful shutdown with swift-service-lifecycle)
+kill_signal = 'SIGTERM'
+kill_timeout = '30s'
+
+[build]
+  # Build the Swift binary before Docker build
+  # This runs locally before pushing to Fly.io
+  [build.args]
+    BUILDPLATFORM = "linux/amd64"
+
+# Environment variables (non-sensitive only)
+[env]
+  HOSTNAME = "0.0.0.0"
+  PORT = "8080"
+  LOG_LEVEL = "info"
+  ATPROTO_SERVICE_URL = "https://bsky.social"
+  VALKEY_PORT = "6379"
+  VALKEY_DATABASE = "0"
+
+# HTTP service configuration
+[[services]]
+  protocol = "tcp"
+  internal_port = 8080
+  processes = ["app"]
+
+  [[services.ports]]
+    port = 80
+    handlers = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port = 443
+    handlers = ["tls", "http"]
+
+  # HTTP health check
+  [services.concurrency]
+    type = "connections"
+    hard_limit = 250
+    soft_limit = 200
+
+  [[services.tcp_checks]]
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "10s"
+
+  [[services.http_checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/api/v1/instance"
+    protocol = "http"
+    tls_skip_verify = false
+
+    [services.http_checks.headers]
+      User-Agent = "Fly-Health-Check"
+
+# VM resources
+[vm]
+  size = "shared-cpu-1x" # 256MB RAM, 1 vCPU
+  # Options: shared-cpu-1x, shared-cpu-2x, shared-cpu-4x, shared-cpu-8x
+  # Or dedicated: performance-1x, performance-2x, etc.
+
+# Auto-scaling (optional)
+[auto_scaling]
+  min_machines_running = 1
+  max_machines_running = 3
+
+# Metrics (automatically collected by Fly.io)
+[metrics]
+  port = 8080
+  path = "/metrics" # If you add a metrics endpoint
+
+# Deploy configuration
+[deploy]
+  strategy = "rolling" # or "canary" or "immediate"
+  max_unavailable = 0.3 # 30% can be down during deploy
+
+# Persistent storage for cache (optional - use Fly Valkey instead for production)
+# Uncomment to use local volume instead of managed Valkey service
+# [[mounts]]
+#   source = "valkey_data"
+#   destination = "/data"
+#   processes = ["app"]
+
+# Required setup:
+#
+# 1. Create and attach Fly Valkey (recommended for production):
+#    fly valkey create --name archaeopteryx-valkey --region sjc
+#    fly valkey attach archaeopteryx-valkey
+#    This will automatically set VALKEY_HOST and VALKEY_PASSWORD secrets
+#
+# 2. (Optional) Setup OpenTelemetry:
+#    fly secrets set OTLP_ENDPOINT=https://your-collector.example.com:4317
+#    fly secrets set OTLP_TRACING_ENABLED=true
+#    fly secrets set OTLP_METRICS_ENABLED=true
+#
+# 3. (Optional) Custom AT Protocol PDS:
+#    fly secrets set ATPROTO_PDS_URL=https://custom-pds.example.com
+#
+# Note: Valkey connection details are automatically injected when using fly valkey attach

@@ -1,19 +1,19 @@
-import XCTest
+import Foundation
+import Testing
 @testable import TranslationLayer
 @testable import ATProtoAdapter
 @testable import MastodonModels
 @testable import IDMapping
 
 /// Tests for StatusTranslator - ATProto post to MastodonStatus translation
-final class StatusTranslatorTests: XCTestCase {
-    var sut: StatusTranslator!
+@Suite struct StatusTranslatorTests {
+    let sut: StatusTranslator
     var mockIDMapping: MockIDMappingService!
     var mockProfileTranslator: ProfileTranslator!
     var facetProcessor: FacetProcessor!
 
-    override func setUp() async throws {
-        try await super.setUp()
-        mockIDMapping = MockIDMappingService()
+    init() async {
+       mockIDMapping = MockIDMappingService()
         facetProcessor = FacetProcessor()
         mockProfileTranslator = ProfileTranslator(idMapping: mockIDMapping, facetProcessor: facetProcessor)
         sut = StatusTranslator(
@@ -23,17 +23,9 @@ final class StatusTranslatorTests: XCTestCase {
         )
     }
 
-    override func tearDown() async throws {
-        sut = nil
-        mockIDMapping = nil
-        mockProfileTranslator = nil
-        facetProcessor = nil
-        try await super.tearDown()
-    }
-
     // MARK: - Text-Only Post Tests
 
-    func testTranslatePost_TextOnly_CreatesBasicStatus() async throws {
+    @Test func TranslatePost_TextOnly_CreatesBasicStatus() async throws {
         let author = createMockProfile()
         let post = ATProtoPost(
             uri: "at://did:plc:abc123/app.bsky.feed.post/xyz789",
@@ -53,32 +45,29 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // ID should be mapped from AT URI
-        XCTAssertEqual(result.id, "987654321")
+        #expect(result.id == "987654321")
 
         // Content should be wrapped in HTML
-        XCTAssertEqual(result.content, "<p>Hello world!</p>")
+        #expect(result.content == "<p>Hello world!</p>")
 
         // Author should be translated
-        XCTAssertEqual(result.account.id, "123456789")
-        XCTAssertEqual(result.account.username, "alice")
+        #expect(result.account.id == "123456789")
+        #expect(result.account.username == "alice")
 
         // Counts should be mapped
-        XCTAssertEqual(result.favouritesCount, 5)
-        XCTAssertEqual(result.reblogsCount, 2)
-        XCTAssertEqual(result.repliesCount, 1)
-
-        // Date should be parsed
-        XCTAssertNotNil(result.createdAt)
+        #expect(result.favouritesCount == 5)
+        #expect(result.reblogsCount == 2)
+        #expect(result.repliesCount == 1)
 
         // Should not be a reply
-        XCTAssertNil(result.inReplyToId)
-        XCTAssertNil(result.inReplyToAccountId)
+        #expect(result.inReplyToId == nil)
+        #expect(result.inReplyToAccountId == nil)
 
         // No reblog
-        XCTAssertNil(result.reblog)
+        #expect(result.reblog == nil)
     }
 
-    func testTranslatePost_EmptyText_CreatesEmptyParagraph() async throws {
+    @Test func TranslatePost_EmptyText_CreatesEmptyParagraph() async throws {
         let author = createMockProfile()
         let post = ATProtoPost(
             uri: "at://did:plc:abc123/app.bsky.feed.post/xyz789",
@@ -90,12 +79,12 @@ final class StatusTranslatorTests: XCTestCase {
 
         let result = try await sut.translate(post)
 
-        XCTAssertEqual(result.content, "<p></p>")
+        #expect(result.content == "<p></p>")
     }
 
     // MARK: - Facets Tests
 
-    func testTranslatePost_WithFacets_ConvertsToHTML() async throws {
+    @Test func TranslatePost_WithFacets_ConvertsToHTML() async throws {
         let author = createMockProfile()
         let facets = [
             ATProtoFacet(
@@ -115,11 +104,11 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Should contain HTML anchor tag
-        XCTAssertTrue(result.content.contains("<a href="))
-        XCTAssertTrue(result.content.contains("https://example.com"))
+        #expect(result.content.contains("<a href="))
+        #expect(result.content.contains("https://example.com"))
     }
 
-    func testTranslatePost_WithMentions_ExtractsMentions() async throws {
+    @Test func TranslatePost_WithMentions_ExtractsMentions() async throws {
         let author = createMockProfile()
         let facets = [
             ATProtoFacet(
@@ -139,16 +128,16 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Should have mention in HTML
-        XCTAssertTrue(result.content.contains("h-card"))
-        XCTAssertTrue(result.content.contains("mention"))
+        #expect(result.content.contains("h-card"))
+        #expect(result.content.contains("mention"))
 
         // Should extract mention into mentions array
-        XCTAssertNotNil(result.mentions)
-        XCTAssertEqual(result.mentions?.count, 1)
-        XCTAssertEqual(result.mentions?.first?.acct, "bob.bsky.social")
+        #expect(result.mentions != nil)
+        #expect(result.mentions?.count == 1)
+        #expect(result.mentions?.first?.acct == "bob.bsky.social")
     }
 
-    func testTranslatePost_WithHashtags_ExtractsTags() async throws {
+    @Test func TranslatePost_WithHashtags_ExtractsTags() async throws {
         let author = createMockProfile()
         let facets = [
             ATProtoFacet(
@@ -168,18 +157,18 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Should have hashtag in HTML
-        XCTAssertTrue(result.content.contains("hashtag"))
-        XCTAssertTrue(result.content.contains("bluesky"))
+        #expect(result.content.contains("hashtag"))
+        #expect(result.content.contains("bluesky"))
 
         // Should extract tag into tags array
-        XCTAssertNotNil(result.tags)
-        XCTAssertEqual(result.tags?.count, 1)
-        XCTAssertEqual(result.tags?.first?.name, "bluesky")
+        #expect(result.tags != nil)
+        #expect(result.tags?.count == 1)
+        #expect(result.tags?.first?.name == "bluesky")
     }
 
     // MARK: - Reply Tests
 
-    func testTranslatePost_Reply_SetsInReplyToFields() async throws {
+    @Test func TranslatePost_Reply_SetsInReplyToFields() async throws {
         let author = createMockProfile()
         let post = ATProtoPost(
             uri: "at://did:plc:abc123/app.bsky.feed.post/xyz789",
@@ -194,17 +183,17 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Should set inReplyToId
-        XCTAssertNotNil(result.inReplyToId)
-        XCTAssertEqual(result.inReplyToId, "987654321")
+        #expect(result.inReplyToId != nil)
+        #expect(result.inReplyToId == "987654321")
 
         // Should set inReplyToAccountId
-        XCTAssertNotNil(result.inReplyToAccountId)
-        XCTAssertEqual(result.inReplyToAccountId, "123456789")
+        #expect(result.inReplyToAccountId != nil)
+        #expect(result.inReplyToAccountId == "123456789")
     }
 
     // MARK: - Image Embed Tests
 
-    func testTranslatePost_WithImages_IncludesMediaAttachments() async throws {
+    @Test func TranslatePost_WithImages_IncludesMediaAttachments() async throws {
         let author = createMockProfile()
         let embed = ATProtoEmbed.images([
             ATProtoImage(url: "https://cdn.bsky.app/img1.jpg", alt: "A beautiful sunset"),
@@ -222,25 +211,25 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Should have media attachments
-        XCTAssertNotNil(result.mediaAttachments)
-        XCTAssertEqual(result.mediaAttachments?.count, 2)
+        #expect(result.mediaAttachments != nil)
+        #expect(result.mediaAttachments?.count == 2)
 
         // First attachment
         let first = result.mediaAttachments?.first
-        XCTAssertEqual(first?.type, .image)
-        XCTAssertEqual(first?.url, "https://cdn.bsky.app/img1.jpg")
-        XCTAssertEqual(first?.description, "A beautiful sunset")
+        #expect(first?.type == .image)
+        #expect(first?.url == "https://cdn.bsky.app/img1.jpg")
+        #expect(first?.description == "A beautiful sunset")
 
         // Second attachment
         let second = result.mediaAttachments?[1]
-        XCTAssertEqual(second?.type, .image)
-        XCTAssertEqual(second?.url, "https://cdn.bsky.app/img2.jpg")
-        XCTAssertNil(second?.description)
+        #expect(second?.type == .image)
+        #expect(second?.url == "https://cdn.bsky.app/img2.jpg")
+        #expect(second?.description == nil)
     }
 
     // MARK: - External Link Embed Tests
 
-    func testTranslatePost_WithExternalLink_CreatesCard() async throws {
+    @Test func TranslatePost_WithExternalLink_CreatesCard() async throws {
         let author = createMockProfile()
         let embed = ATProtoEmbed.external(
             ATProtoExternal(
@@ -262,16 +251,16 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Should have card
-        XCTAssertNotNil(result.card)
-        XCTAssertEqual(result.card?.url, "https://example.com/article")
-        XCTAssertEqual(result.card?.title, "Interesting Article")
-        XCTAssertEqual(result.card?.description, "A very interesting article about Swift")
-        XCTAssertEqual(result.card?.image, "https://example.com/thumb.jpg")
+        #expect(result.card != nil)
+        #expect(result.card?.url == "https://example.com/article")
+        #expect(result.card?.title == "Interesting Article")
+        #expect(result.card?.description == "A very interesting article about Swift")
+        #expect(result.card?.image == "https://example.com/thumb.jpg")
     }
 
     // MARK: - Date Parsing Tests
 
-    func testTranslatePost_WithValidDate_ParsesCorrectly() async throws {
+    @Test func TranslatePost_WithValidDate_ParsesCorrectly() async throws {
         let author = createMockProfile()
         let post = ATProtoPost(
             uri: "at://did:plc:abc123/app.bsky.feed.post/xyz789",
@@ -283,18 +272,15 @@ final class StatusTranslatorTests: XCTestCase {
 
         let result = try await sut.translate(post)
 
-        // Should parse date
-        XCTAssertNotNil(result.createdAt)
-
         // Date should be in 2023
         let calendar = Calendar.current
         let year = calendar.component(.year, from: result.createdAt)
-        XCTAssertEqual(year, 2023)
+        #expect(year == 2023)
     }
 
     // MARK: - Visibility Tests
 
-    func testTranslatePost_DefaultVisibility_IsPublic() async throws {
+    @Test func TranslatePost_DefaultVisibility_IsPublic() async throws {
         let author = createMockProfile()
         let post = ATProtoPost(
             uri: "at://did:plc:abc123/app.bsky.feed.post/xyz789",
@@ -307,12 +293,12 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // Default visibility should be public
-        XCTAssertEqual(result.visibility, .public)
+        #expect(result.visibility == .public)
     }
 
     // MARK: - URI and URL Tests
 
-    func testTranslatePost_GeneratesCorrectURI() async throws {
+    @Test func TranslatePost_GeneratesCorrectURI() async throws {
         let author = createMockProfile()
         let post = ATProtoPost(
             uri: "at://did:plc:abc123/app.bsky.feed.post/xyz789",
@@ -325,8 +311,8 @@ final class StatusTranslatorTests: XCTestCase {
         let result = try await sut.translate(post)
 
         // URI should match the Bluesky post URL
-        XCTAssertTrue(result.uri.contains("bsky.app"))
-        XCTAssertTrue(result.uri.contains("post"))
+        #expect(result.uri.contains("bsky.app"))
+        #expect(result.uri.contains("post"))
     }
 
     // MARK: - Helper Methods
@@ -346,3 +332,4 @@ final class StatusTranslatorTests: XCTestCase {
         )
     }
 }
+
