@@ -1,0 +1,46 @@
+# TruffleHog configuration for Archaeopteryx
+# https://github.com/trufflesecurity/trufflehog
+
+# Paths to exclude from scanning
+exclude_paths:
+  # Test files and mock data
+  - 'Tests/**/*Tests.swift'
+  - 'Tests/**/Mocks/**/*.swift'
+  - 'Tests/**/Fixtures/**'
+
+  # Build and dependency directories
+  - '.build/**'
+  - 'DerivedData/**'
+  - '.swiftpm/**'
+
+  # Documentation
+  - '*.md'
+  - 'docs/**'
+
+  # CI/CD configuration (already scanned separately)
+  - '.github/workflows/**'
+
+# Specific patterns to ignore (regex)
+exclude_detectors:
+  # Add specific detector names here if they cause too many false positives
+  # Example: - "Generic"
+
+# Allow list for known false positives
+# Format: detector_name:finding_hash or detector_name:raw_value
+allow:
+  # Test OAuth tokens
+  - "test_token"
+  - "mock_token"
+  - "example_token"
+
+  # Test Bluesky DIDs
+  - "did:plc:test"
+  - "did:web:test"
+
+  # Placeholder values in documentation
+  - "YOUR_TOKEN_HERE"
+  - "REPLACE_WITH"
+  - "EXAMPLE_SECRET"
+
+  # All-zeros test UUID
+  - "00000000-0000-0000-0000-000000000000"
