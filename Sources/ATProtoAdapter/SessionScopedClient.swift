@@ -14,23 +14,43 @@ public actor SessionScopedClient {
 
     /// Execute an operation with a user's session
     /// Creates a temporary ATProtoKit instance configured with the user's tokens
-    ///
-    /// Note: ATProtoKit doesn't currently expose a clean way to inject pre-existing sessions.
-    /// This is a known limitation. For now, we create a new ATProtoKit instance per request
-    /// and use methods that accept explicit access tokens where available.
-    ///
-    /// TODO: Contribute to ATProtoKit to add session injection support, or use
-    /// direct HTTP calls for operations that require user-specific auth.
     private func withUserSession<T>(
         _ sessionData: BlueskySessionData,
         operation: (ATProtoKit, String) async throws -> T
     ) async throws -> T {
-        // Create a fresh ATProtoKit instance
-        let atproto = await ATProtoKit(pdsURL: serviceURL)
+        // Create a UserSession from the BlueskySessionData
+        let userSession = UserSession(
+            handle: sessionData.handle,
+            sessionDID: sessionData.did,
+            email: sessionData.email,
+            isEmailConfirmed: nil,
+            isEmailAuthenticationFactorEnabled: nil,
+            didDocument: nil,
+            isActive: nil,
+            status: nil,
+            serviceEndpoint: URL(string: serviceURL)!,
+            pdsURL: serviceURL
+        )
 
-        // Execute the operation, passing the access token explicitly
-        // The caller is responsible for passing the token to methods that support it
-        return try await operation(atproto, sessionData.accessToken)
+        // Create an ATProtocolConfiguration to manage the session
+        let sessionConfig = ATProtocolConfiguration(pdsURL: serviceURL)
+        
+        // Register the user session in the registry so ATProtoKit can find it
+        await UserSessionRegistry.shared.register(sessionConfig.instanceUUID, session: userSession)
+
+        // Create ATProtoKit instance configured with the session
+        let atproto = await ATProtoKit(
+            sessionConfiguration: sessionConfig,
+            pdsURL: serviceURL
+        )
+
+        // Execute the operation with the authenticated client
+        let result = try await operation(atproto, sessionData.accessToken)
+        
+        // Clean up: remove the session from the registry after operation completes
+        await UserSessionRegistry.shared.removeSession(for: sessionConfig.instanceUUID)
+        
+        return result
     }
 
     // MARK: - Profile Operations
@@ -41,9 +61,7 @@ public actor SessionScopedClient {
         session: BlueskySessionData
     ) async throws -> ATProtoProfile {
         try await withUserSession(session) { atproto, accessToken in
-            // Note: getProfile doesn't accept explicit accessToken in ATProtoKit
-            // This is a limitation - the call will work but won't be user-scoped
-            // TODO: Use direct HTTP API call with Authorization header
+            // Get profile using the authenticated session
             let profile = try await atproto.getProfile(for: actor)
 
             return ATProtoProfile(
