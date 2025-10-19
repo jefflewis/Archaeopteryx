@@ -1057,15 +1057,37 @@ curl -X POST \
 
 ---
 
+## Timeline Feed Mappings
+
+Mastodon timelines are mapped to Bluesky feeds as follows:
+
+1. **Home Timeline** (`GET /api/v1/timelines/home`):
+   - Maps to user's following feed (`getTimeline()`)
+   - Shows posts from accounts the user follows
+   - Authenticated endpoint
+
+2. **Local Timeline** (`GET /api/v1/timelines/public?local=true`):
+   - Maps to Discover feed (What's Hot)
+   - Feed URI: `at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot`
+   - Suggested/trending content
+   - Authenticated endpoint
+
+3. **Federated Timeline** (`GET /api/v1/timelines/public?local=false`):
+   - Maps to What's Hot Classic feed
+   - Feed URI: `at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic`
+   - Global trending content
+   - Authenticated endpoint
+
+---
+
 ## Known Limitations
 
 1. **No Pinned Posts**: Bluesky doesn't support pinning → return empty array
 2. **No Familiar Followers**: Not implemented → return empty array
-3. **Public Timeline**: Delegates to home timeline (Bluesky has no global feed)
-4. **Lists are Read-Only**: Mapped from Bluesky feeds, can't create/edit via API
-5. **No Custom Emojis**: Bluesky doesn't have custom emojis yet
-6. **No Polls**: Bluesky doesn't support polls yet
-7. **Limited Filters**: Implemented client-side only
+3. **Lists are Read-Only**: Mapped from Bluesky feeds, can't create/edit via API
+4. **No Custom Emojis**: Bluesky doesn't have custom emojis yet
+5. **No Polls**: Bluesky doesn't support polls yet
+6. **Limited Filters**: Implemented client-side only
 
 ---
 

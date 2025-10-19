@@ -63,6 +63,8 @@ struct TimelineRoutes: Sendable {
 
         let limit = min(Int(queryItems["limit"] ?? "20") ?? 20, 40)
         let maxID = queryItems["max_id"]
+        let minID = queryItems["min_id"]
+        let sinceID = queryItems["since_id"]
 
         do {
             // Validate token and get user context
@@ -70,18 +72,26 @@ struct TimelineRoutes: Sendable {
 
             logger.info("Getting home timeline", metadata: [
                 "user": "\(userContext.did)",
-                "limit": "\(limit)"
+                "limit": "\(limit)",
+                "max_id": "\(maxID ?? "none")",
+                "min_id": "\(minID ?? "none")",
+                "since_id": "\(sinceID ?? "none")"
             ])
+
+            // Determine cursor for AT Protocol based on Mastodon pagination params
+            // - max_id: Get posts older than this ID (standard pagination) → use cursor
+            // - min_id/since_id: Get posts newer than this ID (pull-to-refresh) → NO cursor, fetch latest
+            let cursor: String? = maxID  // Only use max_id for cursor, min_id/since_id need fresh data
 
             // Get timeline from AT Protocol with user's session
             let feedResponse = try await sessionClient.getTimeline(
                 limit: limit,
-                cursor: maxID,
+                cursor: cursor,
                 session: userContext.sessionData
             )
 
             // Translate posts to Mastodon statuses
-            let statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
+            var statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
                 for post in feedResponse.posts {
                     group.addTask {
                         try? await self.statusTranslator.translate(post)
@@ -95,6 +105,13 @@ struct TimelineRoutes: Sendable {
                     }
                 }
                 return results
+            }
+
+            // Filter results if min_id or since_id is specified (pull-to-refresh)
+            if let minID = minID, let minIDValue = Int64(minID) {
+                statuses = statuses.filter { Int64($0.id) ?? 0 > minIDValue }
+            } else if let sinceID = sinceID, let sinceIDValue = Int64(sinceID) {
+                statuses = statuses.filter { Int64($0.id) ?? 0 > sinceIDValue }
             }
 
             logger.info("Home timeline retrieved", metadata: ["count": "\(statuses.count)"])
@@ -141,6 +158,8 @@ struct TimelineRoutes: Sendable {
 
         let limit = min(Int(queryItems["limit"] ?? "20") ?? 20, 40)
         let maxID = queryItems["max_id"]
+        let minID = queryItems["min_id"]
+        let sinceID = queryItems["since_id"]
         let isLocal = queryItems["local"]?.lowercased() == "true"
 
         do {
@@ -153,26 +172,33 @@ struct TimelineRoutes: Sendable {
                 feedURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
                 logger.info("Getting local timeline (Discover feed)", metadata: [
                     "user": "\(userContext.did)",
-                    "limit": "\(limit)"
+                    "limit": "\(limit)",
+                    "max_id": "\(maxID ?? "none")",
+                    "min_id": "\(minID ?? "none")"
                 ])
             } else {
                 feedURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic"
                 logger.info("Getting federated timeline (What's Hot feed)", metadata: [
                     "user": "\(userContext.did)",
-                    "limit": "\(limit)"
+                    "limit": "\(limit)",
+                    "max_id": "\(maxID ?? "none")",
+                    "min_id": "\(minID ?? "none")"
                 ])
             }
+
+            // Determine cursor for AT Protocol based on Mastodon pagination params
+            let cursor: String? = maxID  // Only use max_id for cursor, min_id/since_id need fresh data
 
             // Get feed from AT Protocol with user's session
             let feedResponse = try await sessionClient.getFeed(
                 feedURI: feedURI,
                 limit: limit,
-                cursor: maxID,
+                cursor: cursor,
                 session: userContext.sessionData
             )
 
             // Translate posts to Mastodon statuses
-            let statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
+            var statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
                 for post in feedResponse.posts {
                     group.addTask {
                         try? await self.statusTranslator.translate(post)
@@ -250,6 +276,8 @@ struct TimelineRoutes: Sendable {
 
         let limit = min(Int(queryItems["limit"] ?? "20") ?? 20, 40)
         let maxID = queryItems["max_id"]
+        let minID = queryItems["min_id"]
+        let sinceID = queryItems["since_id"]
 
         do {
             // Validate token and get user context
@@ -260,14 +288,19 @@ struct TimelineRoutes: Sendable {
 
             logger.info("List timeline requested", metadata: [
                 "list_id": "\(listSnowflakeID)",
-                "feed_uri": "\(feedURI)"
+                "feed_uri": "\(feedURI)",
+                "max_id": "\(maxID ?? "none")",
+                "min_id": "\(minID ?? "none")"
             ])
+
+            // Determine cursor for AT Protocol based on Mastodon pagination params
+            let cursor = maxID ?? minID ?? sinceID
 
             // Get feed from AT Protocol with user's session
             let feedResponse = try await sessionClient.getFeed(
                 feedURI: feedURI,
                 limit: limit,
-                cursor: maxID,
+                cursor: cursor,
                 session: userContext.sessionData
             )
 

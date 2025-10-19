@@ -1,8 +1,6 @@
 # Build artifacts (except release binary we need)
-.build/debug/
-.build/checkouts/
-.build/*.yaml
-.build/*.json
+.build/
+!.build/*/release/Archaeopteryx
 .swiftpm/
 *.xcodeproj
 *.xcworkspace

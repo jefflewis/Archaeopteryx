@@ -1,21 +1,40 @@
-# Runtime stage - use Alpine for minimal size
-FROM alpine:3.19
+# Build stage - use Swift builder image
+FROM swift:latest AS builder
+
+WORKDIR /build
+
+# Copy package manifest files
+COPY Package.swift Package.resolved ./
+
+# Copy source code
+COPY Sources ./Sources
+COPY Tests ./Tests
+
+# Build the application in release mode
+RUN swift build -c release
+
+# Runtime stage - use Ubuntu for better Swift compatibility
+FROM ubuntu:noble-20241011
 
 WORKDIR /app
 
 # Install runtime dependencies
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y \
     ca-certificates \
-    libstdc++ \
-    libc6-compat \
-    libgcc
+    libcurl4 \
+    libxml2 \
+    libicu74 \
+    tzdata \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the pre-built executable
-# Build script places it in .build/{triple}/release/Archaeopteryx
-COPY .build/*/release/Archaeopteryx /app/
+# Copy Swift runtime libraries from builder
+COPY --from=builder /usr/lib/swift /usr/lib/swift
 
-# Create a non-root user for running the app
-RUN adduser -D -u 1000 archaeopteryx && \
+# Copy the built executable from builder stage
+COPY --from=builder /build/.build/release/Archaeopteryx /app/
+
+# Create a non-root user for running the app (let system assign UID)
+RUN useradd -m -s /bin/bash archaeopteryx && \
     chown -R archaeopteryx:archaeopteryx /app
 
 USER archaeopteryx
