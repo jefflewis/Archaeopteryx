@@ -98,7 +98,19 @@ struct TimelineRoutes: Sendable {
             }
 
             logger.info("Home timeline retrieved", metadata: ["count": "\(statuses.count)"])
-            return try jsonResponse(statuses, status: .ok)
+            
+            // Add Link headers for pagination
+            var response = try jsonResponse(statuses, status: .ok)
+            if let linkHeader = buildLinkHeader(
+                path: "/api/v1/timelines/home",
+                queryItems: queryItems,
+                statuses: statuses,
+                cursor: feedResponse.cursor
+            ) {
+                response.headers[.init("Link")!] = linkHeader
+            }
+            
+            return response
         } catch let error as ATProtoError where error.description.contains("not implemented") {
             logger.warning("Timeline not yet implemented")
             // Return empty array for now
@@ -113,13 +125,95 @@ struct TimelineRoutes: Sendable {
     }
 
     /// GET /api/v1/timelines/public - Get public timeline
-    /// Note: Bluesky doesn't have a global public feed, so this returns empty
+    /// Maps to Bluesky feeds based on `local` query parameter:
+    /// - local=true → Discover feed (at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot)
+    /// - local=false → What's Hot feed (at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic)
     func getPublicTimeline(request: Request, context: some RequestContext) async throws -> Response {
-        logger.info("Public timeline requested - returning empty (Bluesky limitation)")
+        // Verify authentication
+        guard let token = try await extractBearerToken(from: request) else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid bearer token", status: .unauthorized)
+        }
 
-        // Bluesky doesn't have a global public feed
-        let emptyArray: [MastodonStatus] = []
-        return try jsonResponse(emptyArray, status: .ok)
+        // Parse query parameters
+        let uri = request.uri
+        let queryString = uri.query ?? ""
+        let queryItems = parseQueryString(queryString)
+
+        let limit = min(Int(queryItems["limit"] ?? "20") ?? 20, 40)
+        let maxID = queryItems["max_id"]
+        let isLocal = queryItems["local"]?.lowercased() == "true"
+
+        do {
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
+
+            // Select feed based on local parameter
+            let feedURI: String
+            if isLocal {
+                feedURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/whats-hot"
+                logger.info("Getting local timeline (Discover feed)", metadata: [
+                    "user": "\(userContext.did)",
+                    "limit": "\(limit)"
+                ])
+            } else {
+                feedURI = "at://did:plc:z72i7hdynmk6r22z27h6tvur/app.bsky.feed.generator/hot-classic"
+                logger.info("Getting federated timeline (What's Hot feed)", metadata: [
+                    "user": "\(userContext.did)",
+                    "limit": "\(limit)"
+                ])
+            }
+
+            // Get feed from AT Protocol with user's session
+            let feedResponse = try await sessionClient.getFeed(
+                feedURI: feedURI,
+                limit: limit,
+                cursor: maxID,
+                session: userContext.sessionData
+            )
+
+            // Translate posts to Mastodon statuses
+            let statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
+                for post in feedResponse.posts {
+                    group.addTask {
+                        try? await self.statusTranslator.translate(post)
+                    }
+                }
+
+                var results: [MastodonStatus] = []
+                for try await status in group {
+                    if let status = status {
+                        results.append(status)
+                    }
+                }
+                return results
+            }
+
+            logger.info("Public timeline retrieved", metadata: [
+                "local": "\(isLocal)",
+                "count": "\(statuses.count)"
+            ])
+            
+            // Add Link headers for pagination
+            var response = try jsonResponse(statuses, status: .ok)
+            if let linkHeader = buildLinkHeader(
+                path: "/api/v1/timelines/public",
+                queryItems: queryItems,
+                statuses: statuses,
+                cursor: feedResponse.cursor
+            ) {
+                response.headers[.init("Link")!] = linkHeader
+            }
+            
+            return response
+        } catch let error as ATProtoError where error.description.contains("not implemented") {
+            logger.warning("Public timeline not yet implemented")
+            let emptyArray: [MastodonStatus] = []
+            return try jsonResponse(emptyArray, status: .ok)
+        } catch {
+            logger.error("Failed to get public timeline", metadata: ["error": "\(error)"])
+            let emptyArray: [MastodonStatus] = []
+            return try jsonResponse(emptyArray, status: .ok)
+        }
     }
 
     /// GET /api/v1/timelines/tag/:hashtag - Get hashtag timeline
@@ -195,7 +289,19 @@ struct TimelineRoutes: Sendable {
             }
 
             logger.info("List timeline retrieved", metadata: ["list_id": "\(listSnowflakeID)", "count": "\(statuses.count)"])
-            return try jsonResponse(statuses, status: .ok)
+            
+            // Add Link headers for pagination
+            var response = try jsonResponse(statuses, status: .ok)
+            if let linkHeader = buildLinkHeader(
+                path: "/api/v1/timelines/list/\(listSnowflakeID)",
+                queryItems: queryItems,
+                statuses: statuses,
+                cursor: feedResponse.cursor
+            ) {
+                response.headers[.init("Link")!] = linkHeader
+            }
+            
+            return response
         } catch let error as ATProtoError where error.description.contains("not implemented") {
             logger.warning("List timeline not yet implemented")
             // Return empty array for now
@@ -259,5 +365,53 @@ struct TimelineRoutes: Sendable {
         }
 
         return result
+    }
+    
+    /// Build Link header for pagination
+    /// Format: Link: <https://example.com/api/v1/timelines/home?max_id=103>; rel="next", <https://example.com/api/v1/timelines/home?since_id=105>; rel="prev"
+    private func buildLinkHeader(
+        path: String,
+        queryItems: [String: String],
+        statuses: [MastodonStatus],
+        cursor: String?
+    ) -> String? {
+        guard !statuses.isEmpty else { return nil }
+        
+        var links: [String] = []
+        
+        // Get the oldest and newest status IDs
+        let oldestID = statuses.last?.id
+        let newestID = statuses.first?.id
+        
+        // Build next link (older posts) using max_id
+        if let oldestID = oldestID {
+            var nextParams = queryItems
+            nextParams["max_id"] = oldestID
+            nextParams.removeValue(forKey: "since_id")
+            nextParams.removeValue(forKey: "min_id")
+            
+            let queryString = buildQueryString(from: nextParams)
+            links.append("<\(path)?\(queryString)>; rel=\"next\"")
+        }
+        
+        // Build prev link (newer posts) using min_id (for pull-to-refresh)
+        if let newestID = newestID {
+            var prevParams = queryItems
+            prevParams["min_id"] = newestID
+            prevParams.removeValue(forKey: "max_id")
+            prevParams.removeValue(forKey: "since_id")
+            
+            let queryString = buildQueryString(from: prevParams)
+            links.append("<\(path)?\(queryString)>; rel=\"prev\"")
+        }
+        
+        return links.isEmpty ? nil : links.joined(separator: ", ")
+    }
+    
+    /// Build query string from parameters
+    private func buildQueryString(from params: [String: String]) -> String {
+        params.map { key, value in
+            "\(key)=\(value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? value)"
+        }.joined(separator: "&")
     }
 }

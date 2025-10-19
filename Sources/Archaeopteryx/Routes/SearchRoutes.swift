@@ -15,7 +15,7 @@ import Dependencies
 /// Search routes for Mastodon API compatibility
 struct SearchRoutes {
     let logger: Logger
-    @Dependency(\.atProtoClient) var atprotoClient
+    let sessionClient: SessionScopedClient
     let oauthService: OAuthService
     let idMapping: IDMappingService
     let profileTranslator: ProfileTranslator
@@ -25,6 +25,7 @@ struct SearchRoutes {
     static func addRoutes(
         to router: Router<some RequestContext>,
         logger: Logger,
+        sessionClient: SessionScopedClient,
         oauthService: OAuthService,
         idMapping: IDMappingService,
         profileTranslator: ProfileTranslator,
@@ -32,6 +33,7 @@ struct SearchRoutes {
     ) {
         let routes = SearchRoutes(
             logger: logger,
+            sessionClient: sessionClient,
             oauthService: oauthService,
             idMapping: idMapping,
             profileTranslator: profileTranslator,
@@ -84,14 +86,17 @@ struct SearchRoutes {
         let offsetStr = request.uri.queryParameters.get("offset")
         let offset = offsetStr.flatMap(Int.init) ?? 0
 
-        // Optional authentication (search can work without auth)
-        var userContext: UserContext? = nil
-        if let authHeader = request.headers[.authorization], authHeader.hasPrefix("Bearer ") {
-            let token = String(authHeader.dropFirst(7))
-            userContext = try? await oauthService.validateToken(token)
+        // Require authentication for search
+        guard let authHeader = request.headers[.authorization], authHeader.hasPrefix("Bearer ") else {
+            return try errorResponse(error: "unauthorized", description: "Missing or invalid authorization header", status: .unauthorized)
         }
-
+        
+        let token = String(authHeader.dropFirst(7))
+        
         do {
+            // Validate token and get user context
+            let userContext = try await oauthService.validateToken(token)
+            
             // Initialize empty results
             var accounts: [MastodonAccount] = []
             var statuses: [MastodonStatus] = []
@@ -99,7 +104,7 @@ struct SearchRoutes {
 
             // Search for accounts (if type is nil, "accounts", or not specified)
             if typeFilter == nil || typeFilter == "accounts" {
-                accounts = try await searchAccounts(query: query, limit: actualLimit, offset: offset)
+                accounts = try await searchAccounts(query: query, limit: actualLimit, offset: offset, session: userContext.sessionData)
             }
 
             // Search for statuses (if type is nil, "statuses")
@@ -138,10 +143,15 @@ struct SearchRoutes {
     // MARK: - Helper Methods
 
     /// Search for accounts using AT Protocol
-    private func searchAccounts(query: String, limit: Int, offset: Int) async throws -> [MastodonAccount] {
+    private func searchAccounts(query: String, limit: Int, offset: Int, session: BlueskySessionData) async throws -> [MastodonAccount] {
         // Note: AT Protocol doesn't support offset-based pagination, only cursor
         // For MVP, we'll ignore offset and just use limit
-        let searchResponse = try await atprotoClient.searchActors(query, limit, nil)
+        let searchResponse = try await sessionClient.searchActors(
+            query: query,
+            limit: limit,
+            cursor: nil,
+            session: session
+        )
 
         // Translate profiles to Mastodon accounts
         var accounts: [MastodonAccount] = []
