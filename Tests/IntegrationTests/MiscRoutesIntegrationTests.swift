@@ -94,7 +94,7 @@ import DependenciesTestSupport
         let router = Router()
 
         // Add all route types
-        SearchRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, profileTranslator: profileTranslator, cache: cache)
+        SearchRoutes.addRoutes(to: router, logger: logger, sessionClient: sessionClient, oauthService: oauthService, idMapping: idMapping, profileTranslator: profileTranslator, cache: cache)
         OAuthRoutes.addRoutes(to: router, oauthService: oauthService, logger: logger)
         MediaRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, idMapping: idMapping, cache: cache)
         ListRoutes.addRoutes(to: router, logger: logger, oauthService: oauthService, sessionClient: sessionClient, idMapping: idMapping, statusTranslator: statusTranslator, cache: cache)

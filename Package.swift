@@ -22,7 +22,7 @@ let package = Package(
         // Hummingbird - Modern Swift web framework
         .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
         // valkey-swift - Official Valkey client for Swift
-        .package(url: "https://github.com/valkey-io/valkey-swift.git", from: "0.3.0"),
+        .package(url: "https://github.com/valkey-io/valkey-swift.git", from: "0.4.0"),
         // ATProtoKit - AT Protocol / Bluesky SDK
         .package(url: "https://github.com/MasterJ93/ATProtoKit.git", from: "0.1.0"),
         // swift-dependencies - Dependency injection
@@ -33,10 +33,16 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-distributed-tracing.git", from: "1.2.0"),
         // swift-metrics - Required for OTel
         .package(url: "https://github.com/apple/swift-metrics.git", from: "2.4.1"),
+        // swift-prometheus - Prometheus metrics exporter
+        .package(url: "https://github.com/swift-server/swift-prometheus.git", from: "2.0.0"),
+        // swift-profile-recorder - Metrics profiling and recording
+        .package(url: "https://github.com/apple/swift-profile-recorder.git", from: "0.1.0"),
         // swift-crypto - Cross-platform cryptography (replaces CryptoKit on Linux)
         .package(url: "https://github.com/apple/swift-crypto.git", from: "3.0.0"),
         // swift-docc-plugin - Documentation generation
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.0.0"),
+        // swift-configuration - Configuration loading from files and environment
+        .package(url: "https://github.com/apple/swift-configuration.git", from: "0.1.0"),
     ],
     targets: [
         // ========================================
@@ -44,7 +50,9 @@ let package = Package(
         // ========================================
         .target(
             name: "ArchaeopteryxCore",
-            dependencies: []
+            dependencies: [
+                .product(name: "Configuration", package: "swift-configuration"),
+            ]
         ),
         .testTarget(
             name: "ArchaeopteryxCoreTests",
@@ -172,6 +180,8 @@ let package = Package(
                 .product(name: "OTLPGRPC", package: "swift-otel"),
                 .product(name: "Tracing", package: "swift-distributed-tracing"),
                 .product(name: "Metrics", package: "swift-metrics"),
+                .product(name: "Prometheus", package: "swift-prometheus"),
+                .product(name: "ProfileRecorderServer", package: "swift-profile-recorder"),
             ]
         ),
         .testTarget(
