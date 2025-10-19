@@ -241,6 +241,49 @@ public actor OAuthService {
         }
     }
 
+    // MARK: - Client Credentials Grant
+
+    /// Client credentials grant (app-level access without user context)
+    /// Used by Mastodon clients to get basic instance info before user login
+    public func clientCredentialsGrant(
+        clientId: String,
+        clientSecret: String,
+        scope: String
+    ) async throws -> OAuthToken {
+        // Verify client credentials
+        let app = try await getApplication(clientId: clientId)
+        guard app.clientSecret == clientSecret else {
+            throw ArchaeopteryxError.unauthorized
+        }
+
+        // For client credentials, we create a token without user context
+        // This is used for unauthenticated endpoints (instance info, public timelines, etc.)
+        let accessToken = generateSecureToken()
+        let createdAt = Int(Date().timeIntervalSince1970)
+        let expiresIn = 7 * 24 * 60 * 60 // 7 days
+
+        let token = OAuthToken(
+            accessToken: accessToken,
+            tokenType: "Bearer",
+            scope: scope,
+            createdAt: createdAt,
+            expiresIn: expiresIn
+        )
+
+        // Store app-level token data (no user DID or session)
+        let tokenData = AppTokenData(
+            clientId: clientId,
+            scope: scope,
+            tokenType: "Bearer",
+            createdAt: createdAt,
+            expiresIn: expiresIn
+        )
+
+        try await cache.set("\(tokenPrefix)\(accessToken)", value: tokenData, ttl: expiresIn)
+
+        return token
+    }
+
     // MARK: - Token Management
 
     /// Validate access token and return user context with session
@@ -418,6 +461,25 @@ struct TokenData: Codable, Sendable {
 
     /// Bluesky session data for API calls
     let sessionData: BlueskySessionData
+
+    /// OAuth scope
+    let scope: String
+
+    /// Token type (always "Bearer")
+    let tokenType: String
+
+    /// When token was created (Unix timestamp)
+    let createdAt: Int
+
+    /// Token expiration in seconds
+    let expiresIn: Int
+}
+
+/// App-level token data for client credentials grant (no user context)
+/// Made internal (not private) for testing purposes
+struct AppTokenData: Codable, Sendable {
+    /// Client ID that owns this token
+    let clientId: String
 
     /// OAuth scope
     let scope: String

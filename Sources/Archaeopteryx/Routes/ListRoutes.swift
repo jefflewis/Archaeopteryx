@@ -57,11 +57,6 @@ struct ListRoutes {
         router.get("/api/v1/lists/:id/accounts") { request, context -> Response in
             try await routes.getListAccounts(request: request, context: context)
         }
-
-        // GET /api/v1/timelines/list/:id - Get statuses from list members
-        router.get("/api/v1/timelines/list/:id") { request, context -> Response in
-            try await routes.getListTimeline(request: request, context: context)
-        }
     }
 
     // MARK: - Route Handlers
@@ -176,48 +171,6 @@ struct ListRoutes {
         } catch {
             logger.error("Error fetching list accounts: \(error)")
             return try errorResponse(error: "server_error", description: "Failed to fetch list accounts", status: .internalServerError)
-        }
-    }
-
-    /// GET /api/v1/timelines/list/:id - Get statuses from list members
-    /// Returns empty array for MVP since Bluesky doesn't have lists
-    func getListTimeline(request: Request, context: some RequestContext) async throws -> Response {
-        // Authenticate user
-        guard let authHeader = request.headers[.authorization] else {
-            return try errorResponse(error: "unauthorized", description: "Missing authorization header", status: .unauthorized)
-        }
-
-        guard authHeader.hasPrefix("Bearer ") else {
-            return try errorResponse(error: "unauthorized", description: "Invalid authorization format", status: .unauthorized)
-        }
-
-        let token = String(authHeader.dropFirst(7))
-
-        // Get list ID from path
-        guard let listID = context.parameters.get("id", as: String.self) else {
-            return try errorResponse(error: "bad_request", description: "Missing list ID", status: .badRequest)
-        }
-
-        do {
-            // Validate token
-            _ = try await oauthService.validateToken(token)
-
-            // Get pagination parameters
-            let limit = request.uri.queryParameters.get("limit").flatMap(Int.init) ?? 20
-            let actualLimit = min(max(limit, 1), 40)
-
-            // For MVP, return empty array
-            // Future: Could fetch posts from Bluesky custom feed
-            let statuses: [MastodonStatus] = []
-
-            logger.info("Returning empty timeline for list \(listID) (Bluesky doesn't support user-curated lists)")
-            return try jsonResponse(statuses, status: .ok)
-
-        } catch is OAuthError {
-            return try errorResponse(error: "unauthorized", description: "Invalid or expired token", status: .unauthorized)
-        } catch {
-            logger.error("Error fetching list timeline: \(error)")
-            return try errorResponse(error: "server_error", description: "Failed to fetch list timeline", status: .internalServerError)
         }
     }
 

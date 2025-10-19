@@ -11,10 +11,17 @@ public final class ValkeyService: Service, Sendable {
     public init(
         hostname: String,
         port: Int,
+        password: String? = nil,
+        database: Int = 0,
         logger: Logger
     ) {
         self.logger = logger
-        self.client = ValkeyClient(.hostname(hostname, port: port), logger: logger)
+        var config = ValkeyClientConfiguration()
+        if let password = password {
+            config.authentication = .init(username: "default", password: password)
+        }
+        let address = ValkeyServerAddress.hostname(hostname, port: port)
+        self.client = ValkeyClient(address, configuration: config, logger: logger)
     }
 
     /// Access the underlying ValkeyClient
@@ -28,7 +35,8 @@ public final class ValkeyService: Service, Sendable {
             "service": "valkey"
         ])
 
-        // Run the ValkeyClient - this will block until the client is shut down
+        // Start the ValkeyClient connection pool
+        // This is non-blocking and runs until the service is cancelled
         await client.run()
 
         logger.info("Valkey client service stopped")

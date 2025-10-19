@@ -83,7 +83,11 @@ struct NotificationRoutes: Sendable {
             let notifications = try await withThrowingTaskGroup(of: MastodonNotification?.self) { group in
                 for notification in notificationsResponse.notifications {
                     group.addTask {
-                        try? await self.notificationTranslator.translate(notification)
+                        try? await self.notificationTranslator.translate(
+                            notification,
+                            sessionClient: self.sessionClient,
+                            session: userContext.sessionData
+                        )
                     }
                 }
 
@@ -139,7 +143,11 @@ struct NotificationRoutes: Sendable {
 
             // Translate notifications and find the matching one
             for notification in notificationsResponse.notifications {
-                if let translated = try? await notificationTranslator.translate(notification),
+                if let translated = try? await notificationTranslator.translate(
+                    notification,
+                    sessionClient: sessionClient,
+                    session: userContext.sessionData
+                ),
                    translated.id == notificationIDString {
                     logger.info("Found notification", metadata: ["id": "\(notificationSnowflakeID)"])
                     return try jsonResponse(translated, status: .ok)

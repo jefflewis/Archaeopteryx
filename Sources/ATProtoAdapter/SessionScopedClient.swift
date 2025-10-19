@@ -326,6 +326,7 @@ public actor SessionScopedClient {
             )
 
             let text = extractTextFromRecord(post.record) ?? ""
+            let createdAt = extractCreatedAtFromRecord(post.record) ?? post.indexedAt.ISO8601Format()
 
             return ATProtoPost(
                 uri: post.uri,
@@ -336,7 +337,7 @@ public actor SessionScopedClient {
                 embed: nil,
                 replyTo: nil,
                 replyRoot: nil,
-                createdAt: post.indexedAt.ISO8601Format(),
+                createdAt: createdAt,
                 likeCount: post.likeCount ?? 0,
                 repostCount: post.repostCount ?? 0,
                 replyCount: post.replyCount ?? 0,
@@ -619,6 +620,7 @@ public actor SessionScopedClient {
         )
 
         let text = extractTextFromRecord(post.record) ?? ""
+        let createdAt = extractCreatedAtFromRecord(post.record) ?? post.indexedAt.ISO8601Format()
 
         return ATProtoPost(
             uri: post.uri,
@@ -629,7 +631,7 @@ public actor SessionScopedClient {
             embed: nil,
             replyTo: nil,
             replyRoot: nil,
-            createdAt: post.indexedAt.ISO8601Format(),
+            createdAt: createdAt,
             likeCount: post.likeCount ?? 0,
             repostCount: post.repostCount ?? 0,
             replyCount: post.replyCount ?? 0,
@@ -648,6 +650,22 @@ public actor SessionScopedClient {
             if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                let text = json["text"] as? String {
                 return text
+            }
+        } catch {
+            // Silently fail
+        }
+        return nil
+    }
+
+    /// Extract createdAt from UnknownType record
+    private func extractCreatedAtFromRecord(_ record: UnknownType) -> String? {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(record)
+
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let createdAt = json["createdAt"] as? String {
+                return createdAt
             }
         } catch {
             // Silently fail

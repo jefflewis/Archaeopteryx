@@ -2,6 +2,7 @@ import Foundation
 import ATProtoAdapter
 import MastodonModels
 import IDMapping
+import ArchaeopteryxCore
 
 /// Translates AT Protocol notifications to Mastodon notifications
 public struct NotificationTranslator: Sendable {
@@ -20,7 +21,11 @@ public struct NotificationTranslator: Sendable {
     }
 
     /// Translate an AT Protocol notification to a Mastodon notification
-    public func translate(_ notification: ATProtoNotification) async throws -> MastodonNotification {
+    public func translate(
+        _ notification: ATProtoNotification,
+        sessionClient: ATProtoAdapter.SessionScopedClient? = nil,
+        session: BlueskySessionData? = nil
+    ) async throws -> MastodonNotification {
         // Get Snowflake ID for this notification's URI
         let snowflakeID = await idMapping.getSnowflakeID(forATURI: notification.uri)
 
@@ -34,9 +39,19 @@ public struct NotificationTranslator: Sendable {
         let createdAt = parseDate(notification.indexedAt) ?? Date()
 
         // If this notification has a subject (like a post that was liked/reposted),
-        // we would need to fetch and translate it. For now, set to nil
-        // as we don't have the full post data in the notification
-        let status: MastodonStatus? = nil
+        // fetch and translate it
+        var status: MastodonStatus? = nil
+        if let reasonSubject = notification.reasonSubject,
+           let sessionClient = sessionClient,
+           let session = session {
+            do {
+                let post = try await sessionClient.getPost(uri: reasonSubject, session: session)
+                status = try await statusTranslator.translate(post)
+            } catch {
+                // If we can't fetch the subject post, just omit it
+                // This ensures notifications still work even if the post was deleted
+            }
+        }
 
         return MastodonNotification(
             id: String(snowflakeID),

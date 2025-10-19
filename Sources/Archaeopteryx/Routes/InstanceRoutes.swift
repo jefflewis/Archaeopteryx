@@ -33,7 +33,8 @@ struct InstanceRoutes {
     /// Convenience method for tests (uses default config)
     static func addRoutes(to router: Router<some RequestContext>) {
         let logger = Logger(label: "archaeopteryx.instance")
-        let config = (try? ArchaeopteryxConfiguration.load()) ?? .default
+        // Use default config for tests (can't call async load() from sync context)
+        let config = ArchaeopteryxConfiguration.default
         addRoutes(to: router, logger: logger, config: config)
     }
 
@@ -54,7 +55,14 @@ struct InstanceRoutes {
     /// Build instance information from configuration
     private func buildInstanceInfo() -> Instance {
         // Determine base URI from configuration
-        let baseUri = "\(config.server.hostname):\(config.server.port)"
+        // Use PUBLIC_URL if set, otherwise fall back to hostname:port
+        let baseUri: String
+        if let publicURL = config.server.publicURL {
+            // Remove trailing slash if present
+            baseUri = publicURL.hasSuffix("/") ? String(publicURL.dropLast()) : publicURL
+        } else {
+            baseUri = "\(config.server.hostname):\(config.server.port)"
+        }
 
         return Instance(
             uri: baseUri,
@@ -65,7 +73,7 @@ struct InstanceRoutes {
             It translates Mastodon API calls to AT Protocol calls, enabling existing Mastodon applications \
             to work with Bluesky without modification.
             """,
-            email: "admin@\(config.server.hostname)",
+            email: "admin@\(baseUri)",
             version: "4.0.0 (compatible; Archaeopteryx 0.1.0)",
             languages: ["en"],
             registrations: false,  // Users must register on Bluesky

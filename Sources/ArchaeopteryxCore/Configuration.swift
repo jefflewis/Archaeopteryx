@@ -1,4 +1,5 @@
 import Foundation
+import Configuration
 
 /// Application configuration using environment variables and config files
 public struct ArchaeopteryxConfiguration: Codable, Sendable {
@@ -44,16 +45,17 @@ public struct ServerConfiguration: Codable, Sendable {
     /// Server port
     public var port: Int
 
-    public init(hostname: String = "0.0.0.0", port: Int = 8080) {
+    /// Public URL for instance metadata (e.g., "https://archaeopteryx.fly.dev")
+    public var publicURL: String?
+
+    public init(hostname: String = "0.0.0.0", port: Int = 8080, publicURL: String? = nil) {
         self.hostname = hostname
         self.port = port
+        self.publicURL = publicURL
     }
 }
 
 public struct ValkeyConfiguration: Codable, Sendable {
-    /// Whether Valkey/Redis is enabled (false uses in-memory cache)
-    public var enabled: Bool
-
     /// Valkey/Redis host
     public var host: String
 
@@ -67,13 +69,11 @@ public struct ValkeyConfiguration: Codable, Sendable {
     public var database: Int
 
     public init(
-        enabled: Bool = false,
         host: String = "localhost",
         port: Int = 6379,
         password: String? = nil,
         database: Int = 0
     ) {
-        self.enabled = enabled
         self.host = host
         self.port = port
         self.password = password
@@ -129,59 +129,80 @@ public struct ObservabilityConfiguration: Codable, Sendable {
 
 extension ArchaeopteryxConfiguration {
     /// Load configuration from environment variables and config files
-    public static func load() throws -> ArchaeopteryxConfiguration {
+    public static func load() async throws -> ArchaeopteryxConfiguration {
+        // Create configuration provider: reads from .env file (if exists) and environment variables
+        // Environment variables override .env file values
+        let provider: EnvironmentVariablesProvider
+        if let envFileProvider = try? await EnvironmentVariablesProvider(environmentFilePath: ".env") {
+            // .env file exists (local development)
+            provider = envFileProvider
+        } else {
+            // .env file doesn't exist (production/Fly.io) - use environment variables only
+            provider = EnvironmentVariablesProvider()
+        }
+        let config_reader = ConfigReader(provider: provider)
+
         var config = ArchaeopteryxConfiguration()
 
-        // Load from environment variables
-        if let port = ProcessInfo.processInfo.environment["PORT"],
-           let portInt = Int(port) {
-            config.server.port = portInt
+        // Load server configuration
+        if let port = config_reader.int(forKey: "PORT") {
+            config.server.port = port
         }
-
-        if let hostname = ProcessInfo.processInfo.environment["HOSTNAME"] {
+        if let hostname = config_reader.string(forKey: "HOSTNAME") {
             config.server.hostname = hostname
         }
-
-        if let valkeyEnabled = ProcessInfo.processInfo.environment["VALKEY_ENABLED"],
-           valkeyEnabled.lowercased() == "true" {
-            config.valkey.enabled = true
+        if let publicURL = config_reader.string(forKey: "PUBLIC_URL") {
+            config.server.publicURL = publicURL
         }
 
-        if let valkeyHost = ProcessInfo.processInfo.environment["VALKEY_HOST"] {
-            config.valkey.host = valkeyHost
+        // Parse REDIS_URL if provided (Fly.io sets this automatically)
+        if let redisURL = config_reader.string(forKey: "REDIS_URL") {
+            if let parsed = parseRedisURL(redisURL) {
+                config.valkey.host = parsed.host
+                config.valkey.port = parsed.port
+                if let password = parsed.password {
+                    config.valkey.password = password
+                }
+                config.valkey.database = parsed.database
+            }
+        } else {
+            // Load individual Valkey settings if REDIS_URL not present
+            if let host = config_reader.string(forKey: "VALKEY_HOST") {
+                config.valkey.host = host
+            }
+            if let port = config_reader.int(forKey: "VALKEY_PORT") {
+                config.valkey.port = port
+            }
+            if let password = config_reader.string(forKey: "VALKEY_PASSWORD") {
+                config.valkey.password = password
+            }
+            if let database = config_reader.int(forKey: "VALKEY_DATABASE") {
+                config.valkey.database = database
+            }
         }
 
-        if let valkeyPort = ProcessInfo.processInfo.environment["VALKEY_PORT"],
-           let portInt = Int(valkeyPort) {
-            config.valkey.port = portInt
+        // Load AT Protocol configuration
+        if let serviceURL = config_reader.string(forKey: "ATPROTO_SERVICE_URL") {
+            config.atproto.serviceURL = serviceURL
         }
-
-        if let valkeyPassword = ProcessInfo.processInfo.environment["VALKEY_PASSWORD"] {
-            config.valkey.password = valkeyPassword
-        }
-
-        if let atprotoURL = ProcessInfo.processInfo.environment["ATPROTO_SERVICE_URL"] {
-            config.atproto.serviceURL = atprotoURL
-        }
-
-        if let pdsURL = ProcessInfo.processInfo.environment["ATPROTO_PDS_URL"] {
+        if let pdsURL = config_reader.string(forKey: "ATPROTO_PDS_URL") {
             config.atproto.pdsURL = pdsURL
         }
 
-        if let logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"] {
+        // Load logging configuration
+        if let logLevel = config_reader.string(forKey: "LOG_LEVEL") {
             config.logging.level = logLevel
         }
 
-        // Observability configuration
-        if let otlpEndpoint = ProcessInfo.processInfo.environment["OTLP_ENDPOINT"] {
+        // Load observability configuration
+        if let otlpEndpoint = config_reader.string(forKey: "OTLP_ENDPOINT") {
             var obsConfig = ObservabilityConfiguration(otlpEndpoint: otlpEndpoint)
 
-            if let tracingEnabled = ProcessInfo.processInfo.environment["TRACING_ENABLED"],
+            if let tracingEnabled = config_reader.string(forKey: "TRACING_ENABLED"),
                tracingEnabled.lowercased() == "false" {
                 obsConfig.tracingEnabled = false
             }
-
-            if let metricsEnabled = ProcessInfo.processInfo.environment["METRICS_ENABLED"],
+            if let metricsEnabled = config_reader.string(forKey: "METRICS_ENABLED"),
                metricsEnabled.lowercased() == "false" {
                 obsConfig.metricsEnabled = false
             }
@@ -189,12 +210,34 @@ extension ArchaeopteryxConfiguration {
             config.observability = obsConfig
         }
 
-        // Environment configuration
-        if let environment = ProcessInfo.processInfo.environment["ENVIRONMENT"] {
+        // Load environment
+        if let environment = config_reader.string(forKey: "ENVIRONMENT") {
             config.environment = environment
         }
 
         return config
+    }
+
+    /// Parse Redis URL (format: redis://[user][:password]@host:port[/database])
+    private static func parseRedisURL(_ urlString: String) -> (host: String, port: Int, password: String?, database: Int)? {
+        guard let url = URL(string: urlString) else { return nil }
+
+        guard url.scheme == "redis" || url.scheme == "rediss" else { return nil }
+
+        guard let host = url.host else { return nil }
+
+        let port = url.port ?? 6379
+
+        let password = url.password
+
+        // Parse database from path (e.g., /0, /1, etc.)
+        var database = 0
+        if let path = url.path.split(separator: "/").first,
+           let db = Int(path) {
+            database = db
+        }
+
+        return (host: host, port: port, password: password, database: database)
     }
 
     /// Valkey connection URL

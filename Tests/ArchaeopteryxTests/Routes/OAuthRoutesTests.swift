@@ -145,8 +145,8 @@ import HummingbirdTesting
         )
 
         // Validate token
-        let handle = try await service.validateToken(token.accessToken)
-        #expect(handle == "test.bsky.social")
+        let userContext = try await service.validateToken(token.accessToken)
+        #expect(userContext.handle == "test.bsky.social")
     }
 
     /// Test OAuth service revokes tokens
@@ -171,8 +171,8 @@ import HummingbirdTesting
         )
 
         // Verify token is valid
-        let handle = try await service.validateToken(token.accessToken)
-        #expect(handle == "test.bsky.social")
+        let userContext = try await service.validateToken(token.accessToken)
+        #expect(userContext.handle == "test.bsky.social")
 
         // Revoke token
         try await service.revokeToken(token.accessToken)
