@@ -18,6 +18,12 @@ public actor SessionScopedClient {
         _ sessionData: BlueskySessionData,
         operation: (ATProtoKit, String) async throws -> T
     ) async throws -> T {
+        // Create an in-memory keychain with the user's tokens
+        let keychain = await InMemoryKeychain(
+            accessToken: sessionData.accessToken,
+            refreshToken: sessionData.refreshToken
+        )
+        
         // Create a UserSession from the BlueskySessionData
         let userSession = UserSession(
             handle: sessionData.handle,
@@ -32,8 +38,11 @@ public actor SessionScopedClient {
             pdsURL: serviceURL
         )
 
-        // Create an ATProtocolConfiguration to manage the session
-        let sessionConfig = ATProtocolConfiguration(pdsURL: serviceURL)
+        // Create an ATProtocolConfiguration with the in-memory keychain
+        let sessionConfig = ATProtocolConfiguration(
+            pdsURL: serviceURL,
+            keychainProtocol: keychain
+        )
         
         // Register the user session in the registry so ATProtoKit can find it
         await UserSessionRegistry.shared.register(sessionConfig.instanceUUID, session: userSession)
