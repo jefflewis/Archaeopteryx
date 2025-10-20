@@ -20,6 +20,7 @@ struct AccountRoutes: Sendable {
     let sessionClient: SessionScopedClient
     let idMapping: IDMappingService
     let translator: ProfileTranslator
+    let statusTranslator: StatusTranslator
     let logger: Logger
 
     /// Add account routes to the router
@@ -29,6 +30,7 @@ struct AccountRoutes: Sendable {
         sessionClient: SessionScopedClient,
         idMapping: IDMappingService,
         translator: ProfileTranslator,
+        statusTranslator: StatusTranslator,
         logger: Logger
     ) {
         let routes = AccountRoutes(
@@ -36,6 +38,7 @@ struct AccountRoutes: Sendable {
             sessionClient: sessionClient,
             idMapping: idMapping,
             translator: translator,
+            statusTranslator: statusTranslator,
             logger: logger
         )
 
@@ -286,18 +289,66 @@ struct AccountRoutes: Sendable {
                 return try errorResponse(error: "not_found", description: "Account not found", status: .notFound)
             }
 
+            // Parse query parameters for filtering and pagination
+            let uri = request.uri
+            let queryString = uri.query ?? ""
+            let queryItems = parseQueryString(queryString)
+            
+            let limit = min(Int(queryItems["limit"] ?? "20") ?? 20, 40)
+            let cursor = queryItems["max_id"]
+            let excludeReplies = queryItems["exclude_replies"] == "true" || queryItems["exclude_replies"] == "1"
+            let excludeReblogs = queryItems["exclude_reblogs"] == "true" || queryItems["exclude_reblogs"] == "1"
+            let onlyMedia = queryItems["only_media"] == "true" || queryItems["only_media"] == "1"
+            let pinned = queryItems["pinned"] == "true" || queryItems["pinned"] == "1"
+            
+            // Bluesky doesn't support pinned posts
+            if pinned {
+                return try jsonResponse([] as [MastodonStatus], status: .ok)
+            }
+            
+            // Build filter string for AT Proto
+            var filter: String? = nil
+            if excludeReplies && excludeReblogs {
+                filter = "posts_no_replies"  // Only original posts
+            } else if excludeReplies {
+                filter = "posts_with_replies"  // Posts and reposts, no replies
+            } else if onlyMedia {
+                filter = "posts_with_media"  // Only posts with media
+            }
+            
             // Get author feed (posts) using user's session
-            _ = try await sessionClient.getAuthorFeed(
+            let feedResponse = try await sessionClient.getAuthorFeed(
                 actor: did,
-                limit: 20,
-                cursor: nil,
-                filter: nil,
+                limit: limit,
+                cursor: cursor,
+                filter: filter,
                 session: userContext.sessionData
             )
+            
+            // Translate posts to Mastodon statuses
+            var statuses = try await withThrowingTaskGroup(of: MastodonStatus?.self) { group in
+                for post in feedResponse.posts {
+                    group.addTask {
+                        try? await self.statusTranslator.translate(post)
+                    }
+                }
+                
+                var results: [MastodonStatus] = []
+                for try await status in group {
+                    if let status = status {
+                        results.append(status)
+                    }
+                }
+                return results
+            }
+            
+            // Filter out reblogs if requested
+            if excludeReblogs {
+                statuses = statuses.filter { $0.reblog == nil }
+            }
 
-            logger.info("Account statuses retrieved (empty)", metadata: ["id": "\(snowflakeID)", "did": "\(did)"])
-            // Return empty array until Status routes are implemented
-            return try jsonResponse([] as [String], status: .ok)
+            logger.info("Account statuses retrieved", metadata: ["id": "\(snowflakeID)", "did": "\(did)", "count": "\(statuses.count)"])
+            return try jsonResponse(statuses, status: .ok)
         } catch {
             logger.warning("Get account statuses failed", metadata: ["id": "\(snowflakeID)", "error": "\(error)"])
             return try errorResponse(error: "not_found", description: "Posts not available", status: .notFound)
@@ -618,7 +669,7 @@ struct AccountRoutes: Sendable {
     private func jsonResponse<T: Encodable>(_ value: T, status: HTTPResponse.Status) throws -> Response {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .mastodonISO8601
         let data = try encoder.encode(value)
 
         var response = Response(status: status)

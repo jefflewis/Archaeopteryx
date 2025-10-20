@@ -481,6 +481,7 @@ struct ArchaeopteryxApp {
                 sessionClient: sessionClient,
                 idMapping: idMapping,
                 translator: profileTranslator,
+                statusTranslator: statusTranslator,
                 logger: logger
             )
 

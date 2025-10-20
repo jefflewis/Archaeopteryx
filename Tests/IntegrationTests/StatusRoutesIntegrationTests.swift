@@ -15,6 +15,7 @@ import DependenciesTestSupport
 @testable import IDMapping
 @testable import TranslationLayer
 @testable import MastodonModels
+@testable import ArchaeopteryxCore
 
 /// Integration tests for Status API endpoints
 @Suite(.dependencies) struct StatusRoutesIntegrationTests {
@@ -34,17 +35,30 @@ import DependenciesTestSupport
         logger.logLevel = .critical
         let cache = InMemoryCache()
 
-        // OAuth token
+        // OAuth token with Bluesky session data
         struct TokenData: Codable {
+            let did: String
             let handle: String
+            let sessionData: BlueskySessionData
             let scope: String
             let tokenType: String
             let createdAt: Int
             let expiresIn: Int
         }
 
-        let tokenData = TokenData(
+        let sessionData = BlueskySessionData(
+            accessToken: "mock_access_token",
+            refreshToken: "mock_refresh_token",
+            did: did,
             handle: handle,
+            email: "test.com",
+            createdAt: Date()
+        )
+
+        let tokenData = TokenData(
+            did: did,
+            handle: handle,
+            sessionData: sessionData,
             scope: "read write",
             tokenType: "Bearer",
             createdAt: Int(Date().timeIntervalSince1970),

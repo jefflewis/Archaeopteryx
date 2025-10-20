@@ -104,7 +104,9 @@ struct SearchRoutes {
 
             // Search for accounts (if type is nil, "accounts", or not specified)
             if typeFilter == nil || typeFilter == "accounts" {
+                logger.info("Searching for accounts with query: '\(query)', limit: \(actualLimit)")
                 accounts = try await searchAccounts(query: query, limit: actualLimit, offset: offset, session: userContext.sessionData)
+                logger.info("Found \(accounts.count) accounts")
             }
 
             // Search for statuses (if type is nil, "statuses")
@@ -146,12 +148,14 @@ struct SearchRoutes {
     private func searchAccounts(query: String, limit: Int, offset: Int, session: BlueskySessionData) async throws -> [MastodonAccount] {
         // Note: AT Protocol doesn't support offset-based pagination, only cursor
         // For MVP, we'll ignore offset and just use limit
+        logger.debug("Calling AT Proto searchActors with query: '\(query)', limit: \(limit)")
         let searchResponse = try await sessionClient.searchActors(
             query: query,
             limit: limit,
             cursor: nil,
             session: session
         )
+        logger.debug("AT Proto returned \(searchResponse.actors.count) actors")
 
         // Translate profiles to Mastodon accounts
         var accounts: [MastodonAccount] = []

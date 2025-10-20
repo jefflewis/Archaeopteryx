@@ -75,8 +75,9 @@ public actor IDMappingService: IDMappingProtocol {
             return cached
         }
 
-        // Generate deterministic Snowflake ID from AT URI hash
-        let snowflake = generateDeterministicSnowflake(from: atURI)
+        // Generate time-based Snowflake ID from AT URI's TID
+        // This ensures IDs are time-ordered for proper timeline pagination
+        let snowflake = generateTimeBasedSnowflake(from: atURI)
 
         // Store mapping in cache (never expires - deterministic)
         await cache.storeMapping(atURI: atURI, snowflake: snowflake)
@@ -109,7 +110,8 @@ public actor IDMappingService: IDMappingProtocol {
     // MARK: - Private Helpers
 
     /// Generate a deterministic Snowflake ID from a string using SHA-256 hash
-    /// - Parameter string: Input string (DID or AT URI)
+    /// Used for DIDs where time ordering is not required
+    /// - Parameter string: Input string (DID)
     /// - Returns: Deterministic 64-bit Snowflake ID
     private func generateDeterministicSnowflake(from string: String) -> Int64 {
         // Hash the input string
@@ -125,6 +127,77 @@ public actor IDMappingService: IDMappingProtocol {
 
         // Ensure positive value (clear sign bit)
         return abs(snowflake)
+    }
+
+    /// Generate a time-based Snowflake ID from an AT URI
+    /// Extracts timestamp from the TID and uses it to create a sortable ID
+    /// - Parameter atURI: AT Protocol URI containing a TID
+    /// - Returns: Time-ordered Snowflake ID
+    private func generateTimeBasedSnowflake(from atURI: String) -> Int64 {
+        // AT URI format: at://did:plc:abc123/app.bsky.feed.post/3lbpyzzzzzzz
+        // The last component is a TID (Timestamp ID)
+        
+        // Try to extract timestamp from TID
+        if let timestamp = extractTimestampFromTID(atURI) {
+            // Use the generator to create a time-based Snowflake ID
+            // We'll synthesize it using the timestamp
+            let epoch: Int64 = 1577836800000 // 2020-01-01 00:00:00 UTC (same as SnowflakeIDGenerator)
+            let timestampMillis = Int64(timestamp * 1000)
+            
+            // Create a deterministic worker ID from the URI to ensure uniqueness
+            let workerID = abs(Int64(atURI.hashValue)) % 1024 // 10 bits = 0-1023
+            
+            // Simplified Snowflake format: timestamp (41 bits) | workerID (10 bits) | sequence (12 bits)
+            // We use a hash-based sequence to make it deterministic
+            let sequence = abs(Int64(atURI.hashValue >> 10)) % 4096 // 12 bits = 0-4095
+            
+            let snowflake = ((timestampMillis - epoch) << 22) | (workerID << 12) | sequence
+            return abs(snowflake)
+        }
+        
+        // Fallback to hash-based ID if TID extraction fails
+        return generateDeterministicSnowflake(from: atURI)
+    }
+
+    /// Extract timestamp from an AT URI's TID component
+    /// TIDs are base32-sortable timestamps in microseconds since Unix epoch
+    /// - Parameter atURI: AT Protocol URI
+    /// - Returns: Unix timestamp in seconds, or nil if extraction fails
+    private func extractTimestampFromTID(_ atURI: String) -> TimeInterval? {
+        // Extract the TID from the URI (last component)
+        let components = atURI.split(separator: "/")
+        guard components.count >= 3 else { return nil }
+        
+        let tid = String(components[components.count - 1])
+        
+        // Decode TID (base32-sortable encoding)
+        // TIDs are 13 characters encoding 64 bits: timestamp (53 bits) + clock ID (10 bits) + sequence (10 bits)
+        // Simplified: we'll try to decode it as a base32 value
+        
+        let tidTimestamp = decodeTIDTimestamp(tid)
+        return tidTimestamp
+    }
+
+    /// Decode timestamp from TID string
+    /// TIDs encode microseconds since Unix epoch in the first 53 bits
+    /// - Parameter tid: The TID string (13 characters, base32-sortable)
+    /// - Returns: Unix timestamp in seconds
+    private func decodeTIDTimestamp(_ tid: String) -> TimeInterval? {
+        // Base32-sortable alphabet used by AT Protocol
+        let alphabet = "234567abcdefghijklmnopqrstuvwxyz"
+        
+        var value: UInt64 = 0
+        for char in tid.lowercased() {
+            guard let index = alphabet.firstIndex(of: char) else {
+                return nil
+            }
+            let digit = alphabet.distance(from: alphabet.startIndex, to: index)
+            value = value * 32 + UInt64(digit)
+        }
+        
+        // Extract timestamp (first 53 bits) and convert from microseconds to seconds
+        let microseconds = value >> 10 // Remove the last 10 bits (clock ID + sequence)
+        return Double(microseconds) / 1_000_000.0
     }
 }
 

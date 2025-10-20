@@ -608,7 +608,7 @@ struct StatusRoutes: Sendable {
     private func jsonResponse<T: Encodable>(_ value: T, status: HTTPResponse.Status) throws -> Response {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .mastodonISO8601
         let data = try encoder.encode(value)
 
         var response = Response(status: status)

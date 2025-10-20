@@ -21,6 +21,49 @@ public struct StatusTranslator: Sendable {
 
     /// Translate an AT Protocol post to a Mastodon status
     public func translate(_ post: ATProtoPost) async throws -> MastodonStatus {
+        // Check if this is a repost (boost)
+        if let repostedBy = post.repostedBy {
+            // For reposts, create a wrapper status with the original post as reblog
+            let originalStatus = try await translateOriginalPost(post)
+            let repostAccount = try await profileTranslator.translate(repostedBy)
+            
+            // The repost itself doesn't have much metadata - just who reposted it and when
+            // Generate a unique ID for this repost action
+            let repostSnowflakeID = await idMapping.getSnowflakeID(forATURI: post.uri + "/repost/" + repostedBy.did)
+            
+            return MastodonStatus(
+                id: String(repostSnowflakeID),
+                uri: generatePostURI(from: post),
+                createdAt: parseDate(repostedBy.indexedAt ?? post.createdAt) ?? Date(),
+                account: repostAccount,  // The person who reposted
+                content: "",  // Reposts have no content of their own
+                visibility: .public,
+                repliesCount: 0,
+                reblogsCount: 0,
+                favouritesCount: 0,
+                reblogged: false,
+                favourited: false,
+                sensitive: false,
+                spoilerText: "",
+                inReplyToId: nil,
+                inReplyToAccountId: nil,
+                reblog: Box(originalStatus),  // The original post being reposted
+                mediaAttachments: nil,
+                mentions: nil,
+                tags: nil,
+                card: nil,
+                application: nil,
+                language: nil,
+                editedAt: nil
+            )
+        } else {
+            // Regular post (not a repost)
+            return try await translateOriginalPost(post)
+        }
+    }
+    
+    /// Translate the original post (without repost wrapper)
+    private func translateOriginalPost(_ post: ATProtoPost) async throws -> MastodonStatus {
         // Get Snowflake ID for this post's AT URI
         let snowflakeID = await idMapping.getSnowflakeID(forATURI: post.uri)
 
@@ -39,9 +82,9 @@ public struct StatusTranslator: Sendable {
         // Extract hashtags from facets
         let tags = extractTags(from: post.facets)
 
-        // Process embeds (images, external links, etc.)
+        // Process embeds (images, external links, quote posts)
         let mediaAttachments = processMediaEmbeds(post.embed)
-        let card = processExternalEmbed(post.embed)
+        let card = try await processCardEmbed(post.embed)
 
         // Parse created date
         let createdAt = parseDate(post.createdAt) ?? Date()
@@ -207,8 +250,8 @@ public struct StatusTranslator: Sendable {
         }
     }
 
-    /// Process external link embed as card
-    private func processExternalEmbed(_ embed: ATProtoEmbed?) -> Card? {
+    /// Process external link or quote post embed as card
+    private func processCardEmbed(_ embed: ATProtoEmbed?) async throws -> Card? {
         guard let embed = embed else { return nil }
 
         switch embed {
@@ -220,9 +263,30 @@ public struct StatusTranslator: Sendable {
                 type: .link,
                 image: external.thumb
             )
+        case .record(let record):
+            // Quote posts show as cards with a preview of the quoted post
+            let postURI = convertATURIToWebURL(record.uri)
+            return Card(
+                url: postURI,
+                title: "Quoted Post",
+                description: "", // Would need to fetch the actual post to get text
+                type: .link,
+                image: nil
+            )
         default:
             return nil
         }
+    }
+    
+    /// Convert AT URI to web URL
+    private func convertATURIToWebURL(_ atURI: String) -> String {
+        // Convert at://did:plc:abc/app.bsky.feed.post/xyz to https://bsky.app/profile/did:plc:abc/post/xyz
+        let components = atURI.replacingOccurrences(of: "at://", with: "").components(separatedBy: "/")
+        guard components.count >= 3 else { return atURI }
+        
+        let did = components[0]
+        let postID = components[2]
+        return "https://bsky.app/profile/\(did)/post/\(postID)"
     }
 
     /// Parse ISO8601 date string

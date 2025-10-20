@@ -49,7 +49,8 @@ struct TimelineRoutes: Sendable {
     // MARK: - Route Handlers
 
     /// GET /api/v1/timelines/home - Get home timeline
-    /// Returns statuses from followed accounts
+    /// Returns statuses from followed accounts (maps to app.bsky.feed.getTimeline)
+    /// This endpoint returns posts from accounts the authenticated user follows
     func getHomeTimeline(request: Request, context: some RequestContext) async throws -> Response {
         // Verify authentication
         guard let token = try await extractBearerToken(from: request) else {
@@ -79,13 +80,17 @@ struct TimelineRoutes: Sendable {
             ])
 
             // Determine cursor for AT Protocol based on Mastodon pagination params
-            // - max_id: Get posts older than this ID (standard pagination) → use cursor
-            // - min_id/since_id: Get posts newer than this ID (pull-to-refresh) → NO cursor, fetch latest
-            let cursor: String? = maxID  // Only use max_id for cursor, min_id/since_id need fresh data
+            // Note: Mastodon uses post IDs for pagination, Bluesky uses opaque cursors
+            // We can't directly convert Snowflake IDs to Bluesky cursors
+            // Strategy: Fetch more posts and filter client-side based on max_id/min_id
+            let cursor: String? = nil
+            
+            // Fetch extra posts to account for filtering
+            let fetchLimit = maxID != nil ? limit * 3 : limit
 
             // Get timeline from AT Protocol with user's session
             let feedResponse = try await sessionClient.getTimeline(
-                limit: limit,
+                limit: fetchLimit,
                 cursor: cursor,
                 session: userContext.sessionData
             )
@@ -107,14 +112,31 @@ struct TimelineRoutes: Sendable {
                 return results
             }
 
-            // Filter results if min_id or since_id is specified (pull-to-refresh)
+            // Apply Mastodon-style pagination filters
+            // max_id: Return posts older than this ID (standard "load more")
+            if let maxID = maxID, let maxIDValue = Int64(maxID) {
+                statuses = statuses.filter { Int64($0.id) ?? 0 < maxIDValue }
+            }
+            
+            // min_id/since_id: Return posts newer than this ID (pull-to-refresh)
             if let minID = minID, let minIDValue = Int64(minID) {
                 statuses = statuses.filter { Int64($0.id) ?? 0 > minIDValue }
             } else if let sinceID = sinceID, let sinceIDValue = Int64(sinceID) {
                 statuses = statuses.filter { Int64($0.id) ?? 0 > sinceIDValue }
             }
+            
+            // Limit to requested amount after filtering
+            if statuses.count > limit {
+                statuses = Array(statuses.prefix(limit))
+            }
 
-            logger.info("Home timeline retrieved", metadata: ["count": "\(statuses.count)"])
+            logger.info("Home timeline retrieved", metadata: [
+                "fetched": "\(feedResponse.posts.count)",
+                "translated": "\(statuses.count)",
+                "max_id_filter": "\(maxID ?? "none")",
+                "min_id_filter": "\(minID ?? "none")",
+                "has_cursor": "\(feedResponse.cursor != nil)"
+            ])
             
             // Add Link headers for pagination
             var response = try jsonResponse(statuses, status: .ok)
@@ -365,7 +387,7 @@ struct TimelineRoutes: Sendable {
     private func jsonResponse<T: Encodable>(_ value: T, status: HTTPResponse.Status) throws -> Response {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .mastodonISO8601
         let data = try encoder.encode(value)
 
         var response = Response(status: status)

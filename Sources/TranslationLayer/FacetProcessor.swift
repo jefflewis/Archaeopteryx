@@ -10,9 +10,10 @@ public struct FacetProcessor: Sendable {
     ///   - facets: Optional array of facets to apply
     /// - Returns: HTML-formatted string
     public func processText(_ text: String, facets: [Facet]?) -> String {
-        // Handle empty or nil facets - return plain text wrapped in paragraph
+        // Handle empty or nil facets - auto-link URLs and return wrapped in paragraph
         guard let facets = facets, !facets.isEmpty else {
-            return wrapInParagraph(escapeHTML(text).replacingOccurrences(of: "\n", with: "<br>"))
+            let processedText = autoLinkURLs(in: text)
+            return wrapInParagraph(processedText.replacingOccurrences(of: "\n", with: "<br>"))
         }
 
         // Sort facets by start position
@@ -24,11 +25,12 @@ public struct FacetProcessor: Sendable {
         var lastByteIndex = 0
 
         for facet in sortedFacets {
-            // Add text before this facet
+            // Add text before this facet (with auto-linking for unfaceted URLs)
             if lastByteIndex < facet.index.start {
                 let beforeRange = lastByteIndex..<facet.index.start
                 if let beforeText = extractText(from: utf8Data, range: beforeRange) {
-                    result += escapeHTML(beforeText).replacingOccurrences(of: "\n", with: "<br>")
+                    let processedBefore = autoLinkURLs(in: beforeText)
+                    result += processedBefore.replacingOccurrences(of: "\n", with: "<br>")
                 }
             }
 
@@ -41,11 +43,12 @@ public struct FacetProcessor: Sendable {
             lastByteIndex = facet.index.end
         }
 
-        // Add remaining text after last facet
+        // Add remaining text after last facet (with auto-linking for unfaceted URLs)
         if lastByteIndex < utf8Data.count {
             let remainingRange = lastByteIndex..<utf8Data.count
             if let remainingText = extractText(from: utf8Data, range: remainingRange) {
-                result += escapeHTML(remainingText).replacingOccurrences(of: "\n", with: "<br>")
+                let processedRemaining = autoLinkURLs(in: remainingText)
+                result += processedRemaining.replacingOccurrences(of: "\n", with: "<br>")
             }
         }
 
@@ -130,5 +133,42 @@ public struct FacetProcessor: Sendable {
     /// Wrap content in paragraph tags
     private func wrapInParagraph(_ content: String) -> String {
         return "<p>\(content)</p>"
+    }
+    
+    /// Auto-link URLs in plain text (for text without facets)
+    /// Detects URLs and converts them to clickable links
+    private func autoLinkURLs(in text: String) -> String {
+        let escapedText = escapeHTML(text)
+        
+        // Regular expression to match URLs
+        // Matches http://, https://, and www. URLs
+        let urlPattern = #"(?:https?://|www\.)[^\s<>\"']+"#
+        
+        guard let regex = try? NSRegularExpression(pattern: urlPattern, options: []) else {
+            return escapedText
+        }
+        
+        let nsString = escapedText as NSString
+        let matches = regex.matches(in: escapedText, options: [], range: NSRange(location: 0, length: nsString.length))
+        
+        // Process matches in reverse order to maintain string positions
+        var result = escapedText
+        for match in matches.reversed() {
+            let matchRange = match.range
+            let matchedURL = nsString.substring(with: matchRange)
+            
+            // Ensure URL has protocol
+            let fullURL = matchedURL.hasPrefix("www.") ? "https://\(matchedURL)" : matchedURL
+            
+            // Create link HTML
+            let link = "<a href=\"\(fullURL)\" target=\"_blank\" rel=\"nofollow noopener noreferrer\">\(matchedURL)</a>"
+            
+            // Replace in result string
+            if let range = Range(matchRange, in: result) {
+                result.replaceSubrange(range, with: link)
+            }
+        }
+        
+        return result
     }
 }

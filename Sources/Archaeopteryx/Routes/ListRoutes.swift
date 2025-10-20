@@ -181,7 +181,7 @@ struct ListRoutes {
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .convertToSnakeCase
         // Set date encoding strategy
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .mastodonISO8601
         let data = try encoder.encode(value)
 
         var response = Response(status: status)

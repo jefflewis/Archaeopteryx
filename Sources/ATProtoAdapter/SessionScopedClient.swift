@@ -232,13 +232,20 @@ public actor SessionScopedClient {
 
     // MARK: - Feed Operations
 
-    /// Get timeline feed
+    /// Get timeline feed (following feed)
+    /// Returns posts from accounts the user follows via app.bsky.feed.getTimeline
+    /// This is the equivalent of the Mastodon "home" timeline
+    /// 
+    /// Note: Bluesky's timeline may include algorithm-ranked content mixed with chronological posts
+    /// This is intentional Bluesky behavior, not a bug in Archaeopteryx
     public func getTimeline(
         limit: Int = 50,
         cursor: String? = nil,
         session: BlueskySessionData
     ) async throws -> ATProtoFeedResponse {
         try await withUserSession(session) { atproto, accessToken in
+            // ATProtoKit's getTimeline() calls app.bsky.feed.getTimeline
+            // which returns posts from followed accounts (with potential algorithmic ranking)
             let response = try await atproto.getTimeline(limit: limit, cursor: cursor)
 
             let posts = try response.feed.compactMap { feedItem -> ATProtoPost? in
@@ -621,23 +628,50 @@ public actor SessionScopedClient {
 
         let text = extractTextFromRecord(post.record) ?? ""
         let createdAt = extractCreatedAtFromRecord(post.record) ?? post.indexedAt.ISO8601Format()
+        
+        // Parse facets from record
+        let facets = extractFacetsFromRecord(post.record)
+        
+        // Parse embeds (images, external links, quote posts)
+        let embed = parseEmbed(post.embed)
+        
+        // Parse reply info from record
+        let (replyTo, replyRoot) = extractReplyFromRecord(post.record)
+        
+        // Check if this is a repost and extract repost information
+        var repostedBy: ATProtoProfile? = nil
+        if let reason = feedItem.reason, case .reasonRepost(let repostReason) = reason {
+            repostedBy = ATProtoProfile(
+                did: repostReason.by.actorDID,
+                handle: repostReason.by.actorHandle,
+                displayName: repostReason.by.displayName,
+                description: nil,
+                avatar: repostReason.by.avatarImageURL?.absoluteString,
+                banner: nil,
+                followersCount: 0,
+                followsCount: 0,
+                postsCount: 0,
+                indexedAt: repostReason.indexedAt.ISO8601Format()
+            )
+        }
 
         return ATProtoPost(
             uri: post.uri,
             cid: post.cid,
             author: author,
             text: text,
-            facets: nil,
-            embed: nil,
-            replyTo: nil,
-            replyRoot: nil,
+            facets: facets,
+            embed: embed,
+            replyTo: replyTo,
+            replyRoot: replyRoot,
             createdAt: createdAt,
             likeCount: post.likeCount ?? 0,
             repostCount: post.repostCount ?? 0,
             replyCount: post.replyCount ?? 0,
             quoteCount: post.quoteCount,
             isLiked: post.viewer?.likeURI != nil,
-            isReposted: post.viewer?.repostURI != nil
+            isReposted: post.viewer?.repostURI != nil,
+            repostedBy: repostedBy
         )
     }
 
@@ -671,5 +705,136 @@ public actor SessionScopedClient {
             // Silently fail
         }
         return nil
+    }
+    
+    /// Extract facets from UnknownType record
+    private func extractFacetsFromRecord(_ record: UnknownType) -> [ATProtoFacet]? {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(record)
+            
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let facetsArray = json["facets"] as? [[String: Any]] else {
+                return nil
+            }
+            
+            return facetsArray.compactMap { facetDict -> ATProtoFacet? in
+                guard let indexDict = facetDict["index"] as? [String: Int],
+                      let byteStart = indexDict["byteStart"],
+                      let byteEnd = indexDict["byteEnd"],
+                      let featuresArray = facetDict["features"] as? [[String: Any]] else {
+                    return nil
+                }
+                
+                let features = featuresArray.compactMap { featureDict -> ATProtoFeature? in
+                    guard let type = featureDict["$type"] as? String else { return nil }
+                    
+                    switch type {
+                    case "app.bsky.richtext.facet#link":
+                        guard let uri = featureDict["uri"] as? String else { return nil }
+                        return .link(uri: uri)
+                    case "app.bsky.richtext.facet#mention":
+                        guard let did = featureDict["did"] as? String else { return nil }
+                        return .mention(did: did)
+                    case "app.bsky.richtext.facet#tag":
+                        guard let tag = featureDict["tag"] as? String else { return nil }
+                        return .tag(tag: tag)
+                    default:
+                        return nil
+                    }
+                }
+                
+                guard !features.isEmpty else { return nil }
+                
+                return ATProtoFacet(
+                    index: ATProtoByteSlice(byteStart: byteStart, byteEnd: byteEnd),
+                    features: features
+                )
+            }
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Parse embed from post
+    private func parseEmbed(_ embedView: AppBskyLexicon.Feed.PostViewDefinition.EmbedUnion?) -> ATProtoEmbed? {
+        guard let embedView = embedView else { return nil }
+
+        switch embedView {
+        case .embedImagesView(let imagesView):
+            let images = imagesView.images.map { image in
+                ATProtoImage(
+                    url: image.fullSizeImageURL.absoluteString,
+                    alt: image.altText,
+                    aspectRatio: image.aspectRatio.map { aspectRatio in
+                        ATProtoAspectRatio(width: aspectRatio.width, height: aspectRatio.height)
+                    }
+                )
+            }
+            return .images(images)
+
+        case .embedExternalView(let externalView):
+            return .external(ATProtoExternal(
+                uri: externalView.external.uri,
+                title: externalView.external.title,
+                description: externalView.external.description,
+                thumb: externalView.external.thumbnailImageURL?.absoluteString
+            ))
+
+        case .embedRecordView(let recordView):
+            // Handle the different cases of RecordViewUnion
+            switch recordView.record {
+            case .viewRecord(let viewRecord):
+                return .record(ATProtoRecordEmbed(uri: viewRecord.uri, cid: viewRecord.cid))
+            default:
+                return nil
+            }
+
+        case .embedRecordWithMediaView(let recordWithMedia):
+            // Handle the different cases of RecordViewUnion
+            switch recordWithMedia.record.record {
+            case .viewRecord(let viewRecord):
+                return .record(ATProtoRecordEmbed(uri: viewRecord.uri, cid: viewRecord.cid))
+            default:
+                return nil
+            }
+
+        case .embedVideoView:
+            // TODO: Handle video embeds when fully supported
+            return nil
+            
+        @unknown default:
+            return nil
+        }
+    }
+    
+    /// Extract reply information from record
+    private func extractReplyFromRecord(_ record: UnknownType) -> (replyTo: String?, replyRoot: String?) {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(record)
+            
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let replyDict = json["reply"] as? [String: Any] else {
+                return (nil, nil)
+            }
+            
+            var replyTo: String?
+            var replyRoot: String?
+            
+            if let parentDict = replyDict["parent"] as? [String: Any],
+               let parentURI = parentDict["uri"] as? String {
+                replyTo = parentURI
+            }
+            
+            if let rootDict = replyDict["root"] as? [String: Any],
+               let rootURI = rootDict["uri"] as? String {
+                replyRoot = rootURI
+            }
+            
+            return (replyTo, replyRoot)
+        } catch {
+            return (nil, nil)
+        }
     }
 }

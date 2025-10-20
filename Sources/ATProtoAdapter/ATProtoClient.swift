@@ -808,26 +808,54 @@ public actor ATProtoClient {
             indexedAt: post.indexedAt.ISO8601Format()
         )
 
-        // Extract text from the record (it's stored as UnknownType)
-        // We'll decode it as JSON to extract the text field
+        // Extract text and createdAt from the record (it's stored as UnknownType)
+        // We'll decode it as JSON to extract the text field and createdAt timestamp
         let text = extractTextFromRecord(post.record) ?? ""
+        let createdAt = extractCreatedAtFromRecord(post.record) ?? post.indexedAt.ISO8601Format()
+
+        // Parse embeds (images, external links, quote posts)
+        let embed = parseEmbed(post.embed)
+
+        // Parse facets from record
+        let facets = extractFacetsFromRecord(post.record)
+
+        // Parse reply info from record
+        let (replyTo, replyRoot) = extractReplyFromRecord(post.record)
+
+        // Check if this is a repost and extract repost information
+        var repostedBy: ATProtoProfile? = nil
+        if let reason = feedItem.reason, case .reasonRepost(let repostReason) = reason {
+            repostedBy = ATProtoProfile(
+                did: repostReason.by.actorDID,
+                handle: repostReason.by.actorHandle,
+                displayName: repostReason.by.displayName,
+                description: nil,
+                avatar: repostReason.by.avatarImageURL?.absoluteString,
+                banner: nil,
+                followersCount: 0,
+                followsCount: 0,
+                postsCount: 0,
+                indexedAt: repostReason.indexedAt.ISO8601Format()
+            )
+        }
 
         return ATProtoPost(
             uri: post.uri,
             cid: post.cid,
             author: author,
             text: text,
-            facets: nil, // TODO: Parse facets when needed
-            embed: nil, // TODO: Parse embeds when needed
-            replyTo: nil, // TODO: Extract from record when needed
-            replyRoot: nil, // TODO: Extract from record when needed
-            createdAt: post.indexedAt.ISO8601Format(),
+            facets: facets,
+            embed: embed,
+            replyTo: replyTo,
+            replyRoot: replyRoot,
+            createdAt: createdAt,
             likeCount: post.likeCount ?? 0,
             repostCount: post.repostCount ?? 0,
             replyCount: post.replyCount ?? 0,
             quoteCount: post.quoteCount,
             isLiked: post.viewer?.likeURI != nil,  // Check if likeURI field exists
-            isReposted: post.viewer?.repostURI != nil  // Check if repostURI field exists
+            isReposted: post.viewer?.repostURI != nil,  // Check if repostURI field exists
+            repostedBy: repostedBy  // Who reposted this (for timeline display)
         )
     }
 
@@ -854,19 +882,29 @@ public actor ATProtoClient {
             indexedAt: post.indexedAt.ISO8601Format()
         )
 
-        // Extract text from the record
+        // Extract text and createdAt from the record
         let text = extractTextFromRecord(post.record) ?? ""
+        let createdAt = extractCreatedAtFromRecord(post.record) ?? post.indexedAt.ISO8601Format()
+
+        // Parse embeds (images, external links, quote posts)
+        let embed = parseEmbed(post.embed)
+
+        // Parse facets from record
+        let facets = extractFacetsFromRecord(post.record)
+
+        // Parse reply info from record
+        let (replyTo, replyRoot) = extractReplyFromRecord(post.record)
 
         return ATProtoPost(
             uri: post.uri,
             cid: post.cid,
             author: author,
             text: text,
-            facets: nil, // TODO: Parse facets when needed
-            embed: nil, // TODO: Parse embeds when needed
-            replyTo: nil, // TODO: Extract from record when needed
-            replyRoot: nil, // TODO: Extract from record when needed
-            createdAt: post.indexedAt.ISO8601Format(),
+            facets: facets,
+            embed: embed,
+            replyTo: replyTo,
+            replyRoot: replyRoot,
+            createdAt: createdAt,
             likeCount: post.likeCount ?? 0,
             repostCount: post.repostCount ?? 0,
             replyCount: post.replyCount ?? 0,
@@ -922,6 +960,163 @@ public actor ATProtoClient {
             // If extraction fails, return nil
         }
         return nil
+    }
+
+    /// Helper to extract createdAt timestamp from UnknownType record
+    private func extractCreatedAtFromRecord(_ record: UnknownType) -> String? {
+        // UnknownType is a property wrapper around the raw JSON value
+        // We need to decode it to extract the createdAt field from app.bsky.feed.post records
+        do {
+            // Try to encode the UnknownType back to JSON data
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(record)
+
+            // Decode as a dictionary to extract the createdAt field
+            if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let createdAt = json["createdAt"] as? String {
+                return createdAt
+            }
+        } catch {
+            // If extraction fails, return nil
+        }
+        return nil
+    }
+
+    /// Helper to extract facets from UnknownType record
+    private func extractFacetsFromRecord(_ record: UnknownType) -> [ATProtoFacet]? {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(record)
+
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let facetsArray = json["facets"] as? [[String: Any]] else {
+                return nil
+            }
+
+            return facetsArray.compactMap { facetDict -> ATProtoFacet? in
+                guard let indexDict = facetDict["index"] as? [String: Any],
+                      let byteStart = indexDict["byteStart"] as? Int,
+                      let byteEnd = indexDict["byteEnd"] as? Int,
+                      let featuresArray = facetDict["features"] as? [[String: Any]] else {
+                    return nil
+                }
+
+                let features = featuresArray.compactMap { featureDict -> ATProtoFeature? in
+                    guard let type = featureDict["$type"] as? String else { return nil }
+
+                    switch type {
+                    case "app.bsky.richtext.facet#link":
+                        if let uri = featureDict["uri"] as? String {
+                            return .link(uri: uri)
+                        }
+                    case "app.bsky.richtext.facet#mention":
+                        if let did = featureDict["did"] as? String {
+                            return .mention(did: did)
+                        }
+                    case "app.bsky.richtext.facet#tag":
+                        if let tag = featureDict["tag"] as? String {
+                            return .tag(tag: tag)
+                        }
+                    default:
+                        break
+                    }
+                    return nil
+                }
+
+                guard !features.isEmpty else { return nil }
+
+                return ATProtoFacet(
+                    index: ATProtoByteSlice(byteStart: byteStart, byteEnd: byteEnd),
+                    features: features
+                )
+            }
+        } catch {
+            return nil
+        }
+    }
+
+    /// Helper to extract reply information from UnknownType record
+    private func extractReplyFromRecord(_ record: UnknownType) -> (replyTo: String?, replyRoot: String?) {
+        do {
+            let encoder = JSONEncoder()
+            let data = try encoder.encode(record)
+
+            guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let replyDict = json["reply"] as? [String: Any] else {
+                return (nil, nil)
+            }
+
+            let replyTo: String?
+            if let parentDict = replyDict["parent"] as? [String: Any],
+               let uri = parentDict["uri"] as? String {
+                replyTo = uri
+            } else {
+                replyTo = nil
+            }
+
+            let replyRoot: String?
+            if let rootDict = replyDict["root"] as? [String: Any],
+               let uri = rootDict["uri"] as? String {
+                replyRoot = uri
+            } else {
+                replyRoot = nil
+            }
+
+            return (replyTo, replyRoot)
+        } catch {
+            return (nil, nil)
+        }
+    }
+
+    /// Parse embed from ATProtoKit's EmbedUnion
+    private func parseEmbed(_ embedView: AppBskyLexicon.Feed.PostViewDefinition.EmbedUnion?) -> ATProtoEmbed? {
+        guard let embedView = embedView else { return nil }
+
+        switch embedView {
+        case .embedImagesView(let imagesView):
+            let images = imagesView.images.map { image in
+                ATProtoImage(
+                    url: image.fullSizeImageURL.absoluteString,
+                    alt: image.altText,
+                    aspectRatio: image.aspectRatio.map { aspectRatio in
+                        ATProtoAspectRatio(width: aspectRatio.width, height: aspectRatio.height)
+                    }
+                )
+            }
+            return .images(images)
+
+        case .embedExternalView(let externalView):
+            return .external(ATProtoExternal(
+                uri: externalView.external.uri,
+                title: externalView.external.title,
+                description: externalView.external.description,
+                thumb: externalView.external.thumbnailImageURL?.absoluteString
+            ))
+
+        case .embedRecordView(let recordView):
+            // Handle the different cases of RecordViewUnion
+            switch recordView.record {
+            case .viewRecord(let viewRecord):
+                return .record(ATProtoRecordEmbed(uri: viewRecord.uri, cid: viewRecord.cid))
+            default:
+                return nil
+            }
+
+        case .embedRecordWithMediaView(let recordWithMedia):
+            // Handle the different cases of RecordViewUnion
+            switch recordWithMedia.record.record {
+            case .viewRecord(let viewRecord):
+                return .record(ATProtoRecordEmbed(uri: viewRecord.uri, cid: viewRecord.cid))
+            default:
+                return nil
+            }
+
+        case .embedVideoView:
+            return nil
+            
+        case .unknown:
+            return nil
+        }
     }
 
     // MARK: - Error Mapping
@@ -1014,6 +1209,7 @@ public struct ATProtoPost: Codable, Sendable {
     public let quoteCount: Int?
     public let isLiked: Bool
     public let isReposted: Bool
+    public let repostedBy: ATProtoProfile?  // Who reposted this (for boosts in Mastodon)
 
     public init(
         uri: String,
@@ -1030,7 +1226,8 @@ public struct ATProtoPost: Codable, Sendable {
         replyCount: Int = 0,
         quoteCount: Int? = nil,
         isLiked: Bool = false,
-        isReposted: Bool = false
+        isReposted: Bool = false,
+        repostedBy: ATProtoProfile? = nil
     ) {
         self.uri = uri
         self.cid = cid
@@ -1047,6 +1244,7 @@ public struct ATProtoPost: Codable, Sendable {
         self.quoteCount = quoteCount
         self.isLiked = isLiked
         self.isReposted = isReposted
+        self.repostedBy = repostedBy
     }
 }
 

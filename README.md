@@ -1,5 +1,9 @@
 # Archaeopteryx
 
+![Archaeopteryx](https://upload.wikimedia.org/wikipedia/commons/thumb/3/32/Archaeopteryx_TD.png/800px-Archaeopteryx_TD.png)
+
+*[Archaeopteryx illustration](https://commons.wikimedia.org/wiki/File:Archaeopteryx_TD.png) by [TotalDino](https://commons.wikimedia.org/wiki/User:TotalDino), [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/)*
+
 **Use Mastodon clients with Bluesky.** HTTP bridge that translates Mastodon API → AT Protocol.
 
 ## Quick Start
